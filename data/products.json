@@ -1,0 +1,469 @@
+[
+  {
+    "product_id": "paa-plus",
+    "product_name": "PAA Plus",
+    "product_type": "VUL",
+    "tagline": "Flexible protection with investment growth potential.",
+    "product_description": "A variable life insurance plan designed for clients who need life protection with potential fund value growth and flexible payment terms.",
+    "target_client_profile": {
+      "age_range": [18, 65],
+      "income_band": "mid",
+      "life_stage_ids": ["young_professional", "parent"],
+      "risk_appetite_fit": ["moderate", "aggressive"]
+    },
+    "protection_needs_covered": ["death_benefit", "income_replacement"],
+    "payment_structure": {
+      "pay_type": "flexible_pay",
+      "min_pay_years": 5,
+      "max_pay_years": 20,
+      "modal_options": ["monthly", "quarterly", "annual"],
+      "min_premium_estimate": 2000,
+      "minimum_annual_premium": 24000,
+      "budget_band_fit": ["1500-3000", "3000-5000", "5000+", "unsure"],
+      "currency": "PHP"
+    },
+    "default_coverage": { "sum_assured": 1000000, "basis": "base_sum_assured", "label": "Default life coverage" },
+    "coverage_duration": "to_age_100",
+    "key_benefits": ["Flexible premium payments", "Fund value growth potential", "Adjustable coverage"],
+    "available_riders": [
+      {
+        "rider_name": "Waiver of Premium",
+        "rider_type": "waiver_of_premium",
+        "adds_value_for": ["income_replacement"],
+        "sum_assured_type": "fixed",
+        "default_sum_assured": 24000,
+        "sum_assured_label": "Annual premium waived on covered disability"
+      }
+    ],
+    "example_quotation": {
+      "profile": "Age 35, non-smoker, standard underwriting class",
+      "base_sum_assured": 1000000,
+      "annual_premium": 24000,
+      "notes": "Illustrative only. Final premium, charges, and fund values depend on underwriting, selected funds, riders, and policy settings."
+    },
+    "suitability_rules": { "min_age": 18, "max_age": 65, "requires_fna": true, "not_recommended_if": [] },
+    "exclusions_or_limitations": ["COI increases with age", "Fund value subject to market performance"],
+    "match_weight_base": 1.0,
+    "compliance_flags": [],
+    "compliance_notes": "Standard FNA required before recommendation.",
+    "last_updated": "2026-06-25",
+    "needs_review": false,
+    "review_note": "",
+    "is_active": true
+  },
+  {
+    "product_id": "prumillion-protect",
+    "product_name": "PRUMillion Protect",
+    "product_type": "Term",
+    "tagline": "Budget-efficient life protection for families and income earners.",
+    "product_description": "A term life insurance plan focused on high life protection for a defined coverage period, with optional riders for added protection layers.",
+    "target_client_profile": {
+      "age_range": [18, 60],
+      "income_band": "any",
+      "life_stage_ids": ["young_professional", "parent"],
+      "risk_appetite_fit": ["conservative", "moderate"]
+    },
+    "protection_needs_covered": ["death_benefit"],
+    "payment_structure": {
+      "pay_type": "regular_pay",
+      "min_pay_years": 1,
+      "max_pay_years": 20,
+      "modal_options": ["monthly", "quarterly", "semi-annual", "annual"],
+      "min_premium_estimate": 20833,
+      "minimum_annual_premium": 250000,
+      "budget_band_fit": ["5000+", "unsure"],
+      "currency": "PHP"
+    },
+    "default_coverage": { "sum_assured": 5000000, "basis": "base_sum_assured", "label": "Default term life coverage" },
+    "coverage_duration": "renewable_term",
+    "key_benefits": ["High protection amount for lower premium", "Simple death benefit coverage", "Optional riders for added protection"],
+    "available_riders": [
+      {
+        "rider_name": "Accidental Death Benefit",
+        "rider_type": "accidental_death",
+        "adds_value_for": ["death_benefit"],
+        "sum_assured_type": "fixed",
+        "default_sum_assured": 1000000,
+        "sum_assured_label": "Additional accidental death coverage"
+      }
+    ],
+    "example_quotation": {
+      "profile": "Age 37, standard underwriting class",
+      "base_sum_assured": 5000000,
+      "annual_premium": 250000,
+      "notes": "Illustrative only. Final premium depends on age, underwriting, coverage amount, policy term, and selected riders."
+    },
+    "suitability_rules": { "min_age": 18, "max_age": 60, "requires_fna": true, "not_recommended_if": [] },
+    "exclusions_or_limitations": ["No investment value", "Premiums may change upon renewal"],
+    "match_weight_base": 1.0,
+    "compliance_flags": [],
+    "compliance_notes": "Advisor must validate coverage amount and term suitability before proposal.",
+    "last_updated": "2026-06-25",
+    "needs_review": false,
+    "review_note": "",
+    "is_active": true
+  },
+  {
+    "product_id": "pruhealth-prime",
+    "product_name": "PRUHealth Prime",
+    "product_type": "Health",
+    "tagline": "Health-focused protection for hospitalization and critical illness needs.",
+    "product_description": "A health-focused protection plan for clients who want support for hospitalization and critical illness exposure.",
+    "target_client_profile": {
+      "age_range": [18, 65],
+      "income_band": "mid",
+      "life_stage_ids": ["young_professional", "parent", "pre_retiree"],
+      "risk_appetite_fit": ["conservative", "moderate"]
+    },
+    "protection_needs_covered": ["health_hospitalization", "critical_illness"],
+    "payment_structure": {
+      "pay_type": "regular_pay",
+      "min_pay_years": 5,
+      "max_pay_years": 20,
+      "modal_options": ["monthly", "quarterly", "annual"],
+      "min_premium_estimate": 1800,
+      "minimum_annual_premium": 21600,
+      "budget_band_fit": ["1500-3000", "3000-5000", "5000+", "unsure"],
+      "currency": "PHP"
+    },
+    "default_coverage": { "sum_assured": 1000000, "basis": "base_sum_assured", "label": "Default health protection coverage" },
+    "coverage_duration": "to_age_75",
+    "key_benefits": ["Hospitalization support", "Critical illness protection", "Optional hospital income riders"],
+    "available_riders": [
+      {
+        "rider_name": "Hospital Income Rider",
+        "rider_type": "hospital_income",
+        "adds_value_for": ["health_hospitalization"],
+        "sum_assured_type": "fixed",
+        "default_sum_assured": 1000,
+        "sum_assured_label": "Daily hospital income benefit"
+      }
+    ],
+    "example_quotation": {
+      "profile": "Age 35, standard underwriting class",
+      "base_sum_assured": 1000000,
+      "annual_premium": 21600,
+      "notes": "Illustrative only. Final premium depends on health declarations, underwriting, coverage options, and selected riders."
+    },
+    "suitability_rules": { "min_age": 18, "max_age": 65, "requires_fna": true, "not_recommended_if": ["has_health_coverage"] },
+    "exclusions_or_limitations": ["Subject to underwriting", "Existing health coverage may reduce urgency"],
+    "match_weight_base": 1.0,
+    "compliance_flags": [],
+    "compliance_notes": "Health declarations and underwriting review required.",
+    "last_updated": "2026-06-25",
+    "needs_review": false,
+    "review_note": "",
+    "is_active": true
+  },
+  {
+    "product_id": "elite-5",
+    "product_name": "Elite Series - Elite-5",
+    "product_type": "VUL",
+    "tagline": "Limited 5-year pay, lifetime protection and growth.",
+    "product_description": "A limited-pay VUL designed for clients who can commit to a higher five-year premium schedule in exchange for lifetime protection and investment-linked growth potential.",
+    "target_client_profile": {
+      "age_range": [18, 65],
+      "income_band": "mid",
+      "life_stage_ids": ["young_professional", "parent", "pre_retiree"],
+      "risk_appetite_fit": ["moderate", "aggressive"]
+    },
+    "protection_needs_covered": ["death_benefit", "estate_conservation"],
+    "payment_structure": {
+      "pay_type": "limited_pay",
+      "min_pay_years": 5,
+      "max_pay_years": 5,
+      "modal_options": ["monthly", "quarterly", "semi-annual", "annual"],
+      "min_premium_estimate": 5000,
+      "minimum_annual_premium": 60000,
+      "budget_band_fit": ["3000-5000", "5000+"],
+      "currency": "PHP"
+    },
+    "default_coverage": { "sum_assured": 1000000, "basis": "fixed_base_sum_assured", "label": "Fixed contractual base sum assured" },
+    "coverage_duration": "to_age_100",
+    "key_benefits": [
+      "Premiums paid for only 5 years, coverage continues for life",
+      "Fixed contractual base sum assured unaffected by fund withdrawals",
+      "No surrender charges on withdrawals after Year 5 once fully paid",
+      "Fund value growth potential through underlying investment funds"
+    ],
+    "available_riders": [
+      {
+        "rider_name": "Waiver of Premium",
+        "rider_type": "waiver_of_premium",
+        "adds_value_for": ["income_replacement"],
+        "sum_assured_type": "fixed",
+        "default_sum_assured": 60000,
+        "sum_assured_label": "Annual premium waived on covered disability"
+      },
+      {
+        "rider_name": "Critical Illness Rider",
+        "rider_type": "critical_illness",
+        "adds_value_for": ["critical_illness"],
+        "sum_assured_type": "accelerated",
+        "default_sum_assured": 1000000,
+        "sum_assured_label": "Accelerated from the base sum assured"
+      }
+    ],
+    "example_quotation": {
+      "profile": "Age 35, standard underwriting class, 5-year limited-pay illustration",
+      "base_sum_assured": 1000000,
+      "annual_premium": 60000,
+      "notes": "Illustrative only. Verify minimum premium, age bands, rider availability, charges, and withdrawal rules against current Elite Series PDFs before client use."
+    },
+    "suitability_rules": { "min_age": 18, "max_age": 65, "requires_fna": true, "not_recommended_if": [] },
+    "exclusions_or_limitations": [
+      "Higher premium commitment over a short pay period vs regular-pay VUL",
+      "COI deductions still apply post-paid-up period and increase with age",
+      "Fund value, not base sum assured, is affected by withdrawals"
+    ],
+    "match_weight_base": 1.0,
+    "compliance_flags": ["product_specs_need_pdf_verification"],
+    "compliance_notes": "Loyalty bonus warnings circulating in the market apply to Elite-15, not Elite-5. Verify which series before client-facing claims. Requires FNA before recommendation.",
+    "last_updated": "2026-06-25",
+    "needs_review": true,
+    "review_note": "Verify against Elite_Series_Primer.pdf and Elite_PHS_PRUOne.pdf: exact minimum premium, age bands, rider list, and withdrawal/surrender charge mechanics.",
+    "is_active": true
+  },
+  {
+    "product_id": "elite-15",
+    "product_name": "Elite Series - Elite-15",
+    "product_type": "VUL",
+    "tagline": "15-year pay structure balancing affordability and lifetime coverage.",
+    "product_description": "A limited-pay VUL structured for a longer 15-year premium commitment, balancing lower annual cash flow pressure with lifetime protection and investment-linked growth potential.",
+    "target_client_profile": {
+      "age_range": [18, 60],
+      "income_band": "mid",
+      "life_stage_ids": ["young_professional", "parent"],
+      "risk_appetite_fit": ["moderate", "aggressive"]
+    },
+    "protection_needs_covered": ["death_benefit", "estate_conservation"],
+    "payment_structure": {
+      "pay_type": "limited_pay",
+      "min_pay_years": 15,
+      "max_pay_years": 15,
+      "modal_options": ["monthly", "quarterly", "semi-annual", "annual"],
+      "min_premium_estimate": 2500,
+      "minimum_annual_premium": 30000,
+      "budget_band_fit": ["1500-3000", "3000-5000", "5000+"],
+      "currency": "PHP"
+    },
+    "default_coverage": { "sum_assured": 1000000, "basis": "base_sum_assured", "label": "Default lifetime coverage" },
+    "coverage_duration": "to_age_100",
+    "key_benefits": [
+      "Lower per-year premium commitment than Elite-5 for similar coverage",
+      "Lifetime coverage after 15-year pay period",
+      "Fund value growth potential through underlying investment funds"
+    ],
+    "available_riders": [
+      {
+        "rider_name": "Waiver of Premium",
+        "rider_type": "waiver_of_premium",
+        "adds_value_for": ["income_replacement"],
+        "sum_assured_type": "fixed",
+        "default_sum_assured": 30000,
+        "sum_assured_label": "Annual premium waived on covered disability"
+      },
+      {
+        "rider_name": "Critical Illness Rider",
+        "rider_type": "critical_illness",
+        "adds_value_for": ["critical_illness"],
+        "sum_assured_type": "accelerated",
+        "default_sum_assured": 1000000,
+        "sum_assured_label": "Accelerated from the base sum assured"
+      }
+    ],
+    "example_quotation": {
+      "profile": "Age 35, standard underwriting class, 15-year limited-pay illustration",
+      "base_sum_assured": 1000000,
+      "annual_premium": 30000,
+      "notes": "Illustrative only. Loyalty bonus terms and conditions must be verified for Elite-15 before presenting any client-facing claim."
+    },
+    "suitability_rules": { "min_age": 18, "max_age": 60, "requires_fna": true, "not_recommended_if": [] },
+    "exclusions_or_limitations": [
+      "Loyalty bonus structure and conditions differ from Elite-5 and must be confirmed before quoting",
+      "COI deductions increase with age and continue to apply",
+      "Longer pay commitment period than Elite-5"
+    ],
+    "match_weight_base": 1.0,
+    "compliance_flags": ["product_specs_need_pdf_verification", "elite_15_loyalty_bonus_terms_need_verification"],
+    "compliance_notes": "Verify loyalty bonus terms specifically for Elite-15 against current primer before presenting to client. Requires FNA before recommendation.",
+    "last_updated": "2026-06-25",
+    "needs_review": true,
+    "review_note": "Verify against Elite_Series_Primer.pdf and Elite_PHS_PRUOne.pdf: exact minimum premium, age bands, loyalty bonus mechanics, and rider list.",
+    "is_active": true
+  },
+  {
+    "product_id": "prumillionaire",
+    "product_name": "PRUMillionaire",
+    "product_type": "VUL",
+    "tagline": "Goal-oriented wealth building with built-in protection.",
+    "product_description": "A VUL positioned for long-term wealth accumulation goals while retaining life protection for milestone funding needs such as education or retirement seed capital.",
+    "target_client_profile": {
+      "age_range": [18, 60],
+      "income_band": "mid",
+      "life_stage_ids": ["young_professional", "parent"],
+      "risk_appetite_fit": ["moderate", "aggressive"]
+    },
+    "protection_needs_covered": ["death_benefit", "education_funding"],
+    "payment_structure": {
+      "pay_type": "regular_pay",
+      "min_pay_years": 10,
+      "max_pay_years": 20,
+      "modal_options": ["monthly", "quarterly", "annual"],
+      "min_premium_estimate": 3000,
+      "minimum_annual_premium": 36000,
+      "budget_band_fit": ["3000-5000", "5000+"],
+      "currency": "PHP"
+    },
+    "default_coverage": { "sum_assured": 1000000, "basis": "base_sum_assured", "label": "Default life coverage" },
+    "coverage_duration": "to_age_100",
+    "key_benefits": [
+      "Structured around long-term wealth accumulation goals",
+      "Life protection bundled with investment growth potential",
+      "Suited for milestone funding such as education or retirement seed fund"
+    ],
+    "available_riders": [
+      {
+        "rider_name": "Critical Illness Rider",
+        "rider_type": "critical_illness",
+        "adds_value_for": ["critical_illness"],
+        "sum_assured_type": "accelerated",
+        "default_sum_assured": 1000000,
+        "sum_assured_label": "Accelerated from the base sum assured"
+      },
+      {
+        "rider_name": "Waiver of Premium",
+        "rider_type": "waiver_of_premium",
+        "adds_value_for": ["income_replacement"],
+        "sum_assured_type": "fixed",
+        "default_sum_assured": 36000,
+        "sum_assured_label": "Annual premium waived on covered disability"
+      }
+    ],
+    "example_quotation": {
+      "profile": "Age 35, standard underwriting class, regular-pay VUL illustration",
+      "base_sum_assured": 1000000,
+      "annual_premium": 36000,
+      "notes": "Illustrative only. Verify minimum premium, pay term options, charges, fund options, and rider list against current PRUMillionaire PDFs."
+    },
+    "suitability_rules": { "min_age": 18, "max_age": 60, "requires_fna": true, "not_recommended_if": [] },
+    "exclusions_or_limitations": ["Fund value subject to market performance, not guaranteed", "Early withdrawal in initial years may incur charges"],
+    "match_weight_base": 1.0,
+    "compliance_flags": ["product_specs_need_pdf_verification"],
+    "compliance_notes": "Requires FNA before recommendation. Wealth-accumulation positioning must be paired carefully with client's actual risk appetite.",
+    "last_updated": "2026-06-25",
+    "needs_review": true,
+    "review_note": "Verify against PRUMillionaire_Primer.pdf and PRUMillionaire_PHS_PRUOne.pdf: exact minimum premium, pay term options, charges, fund mechanics, and rider list.",
+    "is_active": true
+  },
+  {
+    "product_id": "pru-pep",
+    "product_name": "PRU PEP (Personal Endowment Plan)",
+    "product_type": "Education_Plan",
+    "tagline": "Disciplined savings plan with a maturity payout, built for goal milestones.",
+    "product_description": "A traditional endowment-style plan for conservative clients who want disciplined savings, life protection, and a maturity payout aligned to education or other milestone goals.",
+    "target_client_profile": {
+      "age_range": [18, 55],
+      "income_band": "low",
+      "life_stage_ids": ["parent", "young_professional"],
+      "risk_appetite_fit": ["conservative", "moderate"]
+    },
+    "protection_needs_covered": ["education_funding", "death_benefit"],
+    "payment_structure": {
+      "pay_type": "regular_pay",
+      "min_pay_years": 5,
+      "max_pay_years": 15,
+      "modal_options": ["monthly", "quarterly", "annual"],
+      "min_premium_estimate": 1500,
+      "minimum_annual_premium": 18000,
+      "budget_band_fit": ["1500-3000", "3000-5000"],
+      "currency": "PHP"
+    },
+    "default_coverage": { "sum_assured": 500000, "basis": "base_sum_assured", "label": "Default endowment coverage" },
+    "coverage_duration": "fixed_term_endowment",
+    "key_benefits": [
+      "Lump-sum maturity benefit aligned to a savings goal or timeline",
+      "Built-in life protection during the pay period",
+      "Simple traditional structure, not market-value dependent like VUL"
+    ],
+    "available_riders": [
+      {
+        "rider_name": "Accidental Death Benefit",
+        "rider_type": "accidental_death",
+        "adds_value_for": ["death_benefit"],
+        "sum_assured_type": "fixed",
+        "default_sum_assured": 500000,
+        "sum_assured_label": "Additional accidental death coverage"
+      }
+    ],
+    "example_quotation": {
+      "profile": "Age 35, standard underwriting class, education milestone illustration",
+      "base_sum_assured": 500000,
+      "annual_premium": 18000,
+      "notes": "Illustrative only. Verify maturity structure, pay terms, benefits, and exact minimum premium against the current PRU PEP product primer."
+    },
+    "suitability_rules": { "min_age": 18, "max_age": 55, "requires_fna": true, "not_recommended_if": [] },
+    "exclusions_or_limitations": [
+      "Lower growth potential than VUL-type products and not designed for aggressive growth",
+      "Early surrender may yield less than premiums paid"
+    ],
+    "match_weight_base": 1.0,
+    "compliance_flags": ["product_specs_need_pdf_verification"],
+    "compliance_notes": "Good fit for conservative, budget-sensitive clients prioritizing certainty over growth. Requires FNA before recommendation.",
+    "last_updated": "2026-06-25",
+    "needs_review": true,
+    "review_note": "Verify against PRU_PEP_Product_Primer_PEP.pdf: exact maturity structure, pay terms, benefits, and minimum premium.",
+    "is_active": true
+  },
+  {
+    "product_id": "prulifetime-income",
+    "product_name": "PRULifetime Income",
+    "product_type": "Income_Annuity",
+    "tagline": "Guaranteed income stream for retirement or estate conservation strategies.",
+    "product_description": "An income-focused product positioned for retirement income and estate conservation conversations where predictable periodic income and liquidity planning are central.",
+    "target_client_profile": {
+      "age_range": [40, 70],
+      "income_band": "high",
+      "life_stage_ids": ["pre_retiree", "retiree"],
+      "risk_appetite_fit": ["conservative", "moderate"]
+    },
+    "protection_needs_covered": ["retirement_income", "estate_conservation"],
+    "payment_structure": {
+      "pay_type": "single_pay",
+      "min_pay_years": 1,
+      "max_pay_years": 1,
+      "modal_options": ["single", "annual"],
+      "min_premium_estimate": 100000,
+      "minimum_annual_premium": 100000,
+      "budget_band_fit": ["5000+"],
+      "currency": "PHP"
+    },
+    "default_coverage": { "sum_assured": 1000000, "basis": "income_contract_value", "label": "Illustrative contract value" },
+    "coverage_duration": "lifetime_income_stream",
+    "key_benefits": [
+      "Predictable, guaranteed periodic income payout",
+      "Useful for estate conservation and liquidity-for-estate-tax strategies",
+      "Lower complexity than VUL because positioning is income-focused, not growth-focused"
+    ],
+    "available_riders": [],
+    "example_quotation": {
+      "profile": "Age 55, retirement income and estate conservation discussion",
+      "base_sum_assured": 1000000,
+      "annual_premium": 100000,
+      "notes": "Placeholder only. No source PDF exists in project files. Verify every figure and product rule against the official brochure before use."
+    },
+    "suitability_rules": { "min_age": 40, "max_age": 70, "requires_fna": true, "not_recommended_if": [] },
+    "exclusions_or_limitations": [
+      "Requires substantial single-pay capital and is not suited for budget-constrained clients",
+      "Estate tax treatment discussions require referral to a licensed attorney and this product does not constitute tax or legal advice",
+      "Liquidity may be limited once the single premium is committed"
+    ],
+    "match_weight_base": 1.2,
+    "compliance_flags": ["attorney_referral_required", "product_specs_need_pdf_verification"],
+    "compliance_notes": "Any estate conservation or tax positioning conversation must be flagged with attorney_referral_required. Requires FNA before recommendation.",
+    "last_updated": "2026-06-25",
+    "needs_review": true,
+    "review_note": "No source PDF currently exists in project files for PRULifetime Income. Entry is based on memory notes only; verify all figures, age bands, minimum single-pay amount, and legal/tax positioning against the official brochure.",
+    "is_active": true
+  }
+]

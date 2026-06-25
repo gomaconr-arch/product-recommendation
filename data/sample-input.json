@@ -1,0 +1,55 @@
+{
+  "schema_version": "financial_foundation_matching_input.v1",
+  "generated_at": "2026-06-25T10:00:00Z",
+  "source": { "app": "financial-foundation-check", "result_type": "assessment_result" },
+  "applicant_profile": {
+    "age": 32,
+    "gender": "male",
+    "life_stage": { "id": "parent", "label": "Parent" },
+    "has_dependents": true,
+    "dependents": [{ "id": "spouse", "label": "Spouse" }, { "id": "child", "label": "Child" }]
+  },
+  "assessment_answers": {
+    "income_stability": { "id": "stable", "label": "Stable income" },
+    "savings_habit": { "id": "irregular", "label": "Saves irregularly" },
+    "emergency_fund_duration": { "id": "1-3months", "label": "1-3 months covered" },
+    "current_protection": [{ "id": "hmo", "label": "Company HMO" }],
+    "financial_priorities": [{ "id": "family_protection", "label": "Protecting my family" }]
+  },
+  "personalization_inputs": {
+    "selected_focus": { "id": "family", "label": "Family Protection" },
+    "monthly_budget_comfort": { "id": "1500-3000", "label": "PHP 1,500-3,000 / month" },
+    "quote_intent": "explore_options"
+  },
+  "assessment_result": {
+    "total_score": 58,
+    "max_score": 100,
+    "readiness_band": "on_track",
+    "persona": "The Builder",
+    "score_breakdown": { "cashflow": { "score": 15, "max": 25 }, "emergency": { "score": 10, "max": 20 }, "protection": { "score": 18, "max": 30 }, "goals": { "score": 15, "max": 25 } },
+    "pressure_points": [
+      { "title": "No life insurance coverage", "status": "attention", "summary": "No life policy in place despite having dependents", "detail": "...", "why_it_matters": "..." }
+    ]
+  },
+  "matching_signals": {
+    "has_health_coverage": true,
+    "has_life_coverage": false,
+    "has_any_protection": true,
+    "emergency_fund_months_band": "1-3months",
+    "priority_ids": ["family_protection"],
+    "protection_ids": ["hmo"],
+    "dependent_ids": ["spouse", "child"]
+  },
+  "matching_constraints": {
+    "budget_range_id": "1500-3000",
+    "budget_range_label": "PHP 1,500-3,000 / month",
+    "avoid_payment_required_at_assessment": true,
+    "recommendation_should_align_to_primary_focus": "family"
+  },
+  "recommended_next_step": {
+    "headline": "You're building a solid foundation",
+    "hook": "Let's close the protection gap",
+    "button_text": "See My Options",
+    "wizard_headline": "Your Next Step"
+  }
+}

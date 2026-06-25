@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "focus_to_protection_need_map": {
+    "family": ["death_benefit", "income_replacement"],
+    "health": ["health_hospitalization", "critical_illness"],
+    "savings": ["death_benefit", "education_funding"],
+    "invest": ["retirement_income"],
+    "explore": []
+  },
+  "priority_id_to_protection_need_map": {
+    "_comment": "TODO before advisor use: confirm these IDs against the live JOURNEY_MODULES priorities option list. Current keys are seeded from available assessment examples, not a finalized source export.",
+    "family_protection": ["income_replacement"],
+    "health_emergency": ["health_hospitalization", "critical_illness"],
+    "education": ["education_funding"],
+    "retirement": ["retirement_income"],
+    "wealth_growth": ["retirement_income", "estate_conservation"],
+    "estate_planning": ["estate_conservation"]
+  },
+  "readiness_band_modifiers": {
+    "building": { "score_multiplier": 1.0, "ui_tone": "reassuring", "max_recommendations": 3 },
+    "on_track": { "score_multiplier": 1.0, "ui_tone": "encouraging", "max_recommendations": 4 },
+    "stable": { "score_multiplier": 1.0, "ui_tone": "confident", "max_recommendations": 5 }
+  },
+  "protection_gap_rules": {
+    "no_life_coverage_and_has_dependents": {
+      "condition": "matching_signals.has_life_coverage === false && applicant_profile.has_dependents === true",
+      "boost_protection_need": "death_benefit",
+      "weight": 2.0,
+      "reason": "Addresses a coverage gap: no life insurance in place with dependents"
+    },
+    "no_health_coverage": {
+      "condition": "matching_signals.has_health_coverage === false",
+      "boost_protection_need": "health_hospitalization",
+      "weight": 1.5,
+      "reason": "Addresses a coverage gap: no health coverage is currently indicated"
+    },
+    "low_emergency_fund": {
+      "condition": "matching_signals.emergency_fund_months_band is low",
+      "boost_payment_structure": "flexible_pay",
+      "weight": 1.0,
+      "reason": "Keeps flexibility in view while emergency savings are still building"
+    }
+  },
+  "budget_fit_rules": {
+    "hard_filter": "matching_constraints.budget_range_id is null OR matching_constraints.budget_range_id IN product.payment_structure.budget_band_fit",
+    "soft_note_if_unsure": "If budget_range_id === 'unsure', do not hard-filter — show entry-level/flexible products first."
+  },
+  "age_eligibility": {
+    "hard_filter": "product.suitability_rules.min_age <= applicant_profile.age <= product.suitability_rules.max_age"
+  },
+  "scoring_weights": {
+    "focus_match": 3.0,
+    "priority_match": 2.5,
+    "protection_gap_boost": 2.0,
+    "budget_band_match": 1.5,
+    "readiness_band_alignment": 0.5
+  },
+  "hard_rules": {
+    "no_purchase_language_pre_fna": true,
+    "always_attach_disclaimer": true
+  }
+}
