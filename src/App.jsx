@@ -345,15 +345,20 @@ function LoginGate({ onAuthenticated }) {
   async function handleSubmit(event) {
     event.preventDefault();
     setSubmitting(true);
-    const user = await authenticateUserRemote(email, password);
-    if (user) {
-      onAuthenticated(user);
-      setSubmitting(false);
-      return;
-    }
+    setError("");
+    try {
+      const user = await authenticateUserRemote(email, password);
+      if (user) {
+        onAuthenticated(user);
+        return;
+      }
 
-    setError("Email or password is incorrect.");
-    setSubmitting(false);
+      setError("Email or password is incorrect.");
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : "Unable to sign in.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (

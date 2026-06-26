@@ -1,5 +1,10 @@
 export const AUTH_SESSION_KEY = "product_recommendation.auth_session.v1";
 export const AGENTS_KEY = "product_recommendation.agents.v1";
+const ALLOW_LOCAL_FALLBACK = import.meta.env?.DEV === true;
+
+function shouldUseLocalFallback() {
+  return ALLOW_LOCAL_FALLBACK;
+}
 
 export const ROOT_USER = {
   user_id: "superadmin-root",
@@ -140,7 +145,11 @@ export async function authenticateUserRemote(email, password) {
       saveAuthSession(body.user);
       return body.user;
     }
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) {
+      clearAuthSession();
+      throw error;
+    }
     const user = authenticateUser(email, password);
     if (user) saveAuthSession(user);
     return user;
@@ -169,7 +178,12 @@ export async function fetchAuthSession() {
       saveAuthSession(body.user);
       return body.user;
     }
+    clearAuthSession();
   } catch {
+    if (!shouldUseLocalFallback()) {
+      clearAuthSession();
+      return null;
+    }
     return readAuthSession();
   }
 
@@ -192,7 +206,7 @@ export async function clearAuthSessionRemote() {
   try {
     await requestJson("/api/auth/logout", { method: "POST" });
   } catch {
-    // Local fallback still clears the browser-side session below.
+    // The browser-side session is cleared below even if the API is unavailable.
   }
   clearAuthSession();
 }
@@ -223,7 +237,8 @@ export async function fetchAgentsRemote() {
   try {
     const body = await requestJson("/api/agents");
     return Array.isArray(body.agents) ? body.agents : [];
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     return getAgents().map(withoutPassword);
   }
 }
@@ -235,7 +250,8 @@ export async function saveAgentRemote(agent) {
       body: JSON.stringify(agent)
     });
     return body.agent;
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     return withoutPassword(saveAgent(agent));
   }
 }
@@ -251,7 +267,8 @@ export async function deleteAgentRemote(userId) {
     await requestJson(`/api/agents?user_id=${encodeURIComponent(userId)}`, {
       method: "DELETE"
     });
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     deleteAgent(userId);
   }
 }
