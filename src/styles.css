@@ -22,8 +22,3 @@ select,
 textarea {
   font: inherit;
 }
-
-.otp-digit {
-  -webkit-text-security: disc;
-  text-security: disc;
-}

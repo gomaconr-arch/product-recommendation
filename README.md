@@ -11,6 +11,17 @@ npm install
 npm run dev
 ```
 
+## Seeded Login
+
+The current advisor workspace uses seeded frontend login accounts:
+
+- Superadmin: `root@root.local` / `r00t`
+- Agent: `richard.badlisan@gmail.com` / `richardo`
+
+Richard B is configured with agent slug `richardo` and assessment URL `https://assess.lablibre.com/richardo`. The superadmin account is not tied to an agent profile and can see all local records. The agent account only sees local records tagged with its agent ID.
+
+This is a first-pass login gate for the current frontend/localStorage workspace. Replace it with server-backed authentication before relying on it for sensitive production access.
+
 ## Test
 
 ```bash

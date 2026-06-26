@@ -8,6 +8,7 @@ import {
   ExternalLink,
   FileText,
   Link,
+  LogOut,
   LockKeyhole,
   PhoneCall,
   Plus,
@@ -17,9 +18,10 @@ import {
   ShieldCheck,
   UserRound
 } from "lucide-react";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import products from "../data/products.json";
 import pivotRules from "../data/pivot-rules.json";
+import { authenticateUser, canAccessLead, clearAuthSession, readAuthSession, saveAuthSession } from "./lib/auth.js";
 import { getRecommendations } from "./lib/matchEngine.js";
 import { adaptRawAssessmentToMatchInput, createLeadFromRawAssessment, validateRawAssessment } from "./lib/rawAssessmentAdapter.js";
 import { validateMatchingInput, validatePivotRules, validateProducts } from "./lib/validation.js";
@@ -36,7 +38,6 @@ import {
   updateProposal
 } from "./lib/storage.js";
 
-const AGENT_ID = "advisor-demo";
 const PROPOSAL_DISCLAIMER =
   "This proposal is based on the information you provided and is subject to final underwriting and review.";
 
@@ -84,6 +85,10 @@ const sampleRawAssessment = {
     consent: true,
     birthYear: 1989
   },
+  agent: {
+    agentSlug: "richardo",
+    agentName: "Richard B"
+  },
   scoreData: {
     score: 58,
     breakdown: { cashflow: 15, emergency: 10, protection: 18, goals: 15 },
@@ -113,13 +118,6 @@ const sampleRawAssessment = {
   },
   moduleTimings: { foundation: "42s", protection: "61s", quote: "38s" }
 };
-
-function getDateOtpCode() {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${month}${day}`;
-}
 
 function formatDate(value) {
   if (!value) return "Not yet";
@@ -323,93 +321,66 @@ function WorkflowStepper({ currentStep }) {
 }
 
 function LoginGate({ onAuthenticated }) {
-  const [digits, setDigits] = useState(["", "", "", ""]);
+  const [email, setEmail] = useState("root@root.local");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const inputRefs = useRef([]);
 
-  function submitCode(nextDigits) {
-    const code = nextDigits.join("");
-    if (code.length !== 4) return;
-
-    if (code === getDateOtpCode()) {
-      setError("");
-      onAuthenticated();
+  function handleSubmit(event) {
+    event.preventDefault();
+    const user = authenticateUser(email, password);
+    if (user) {
+      saveAuthSession(user);
+      onAuthenticated(user);
       return;
     }
 
-    setError("The code entered does not match today's access code.");
-  }
-
-  function updateDigit(index, value) {
-    const numericValue = value.replace(/\D/g, "").slice(-1);
-    const nextDigits = [...digits];
-    nextDigits[index] = numericValue;
-    setDigits(nextDigits);
-    setError("");
-
-    if (numericValue && index < inputRefs.current.length - 1) {
-      inputRefs.current[index + 1]?.focus();
-    }
-
-    submitCode(nextDigits);
-  }
-
-  function handleKeyDown(index, event) {
-    if (event.key === "Backspace" && !digits[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    }
-  }
-
-  function handlePaste(event) {
-    event.preventDefault();
-    const pastedDigits = event.clipboardData.getData("text").replace(/\D/g, "").slice(0, 4);
-    const nextDigits = Array.from({ length: 4 }, (_, index) => pastedDigits[index] || "");
-    setDigits(nextDigits);
-    setError("");
-
-    const nextEmptyIndex = nextDigits.findIndex((digit) => !digit);
-    inputRefs.current[nextEmptyIndex === -1 ? 3 : nextEmptyIndex]?.focus();
-    submitCode(nextDigits);
+    setError("Email or password is incorrect.");
   }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-mist px-5 py-10">
-      <section className="w-full max-w-md rounded-lg border border-line bg-white p-6 shadow-sm">
+      <form onSubmit={handleSubmit} className="w-full max-w-md rounded-lg border border-line bg-white p-6 shadow-sm">
         <div className="flex h-11 w-11 items-center justify-center rounded-md bg-forest text-white">
           <LockKeyhole size={21} />
         </div>
         <h1 className="mt-5 text-2xl font-semibold text-ink">Advisor Access</h1>
-        <label className="mt-5 block text-sm font-semibold text-ink" htmlFor="otp-0">
-          Provide the code sent to your email.
+        <p className="mt-2 text-sm text-slate-500">Sign in with an admin or agent account.</p>
+        <label className="mt-5 block text-sm font-semibold text-ink" htmlFor="login-email">
+          Email
         </label>
-        <div className="mt-3 grid grid-cols-4 gap-3">
-          {digits.map((digit, index) => (
-            <input
-              key={index}
-              ref={(element) => {
-                inputRefs.current[index] = element;
-              }}
-              id={`otp-${index}`}
-              type="password"
-              inputMode="numeric"
-              autoComplete={index === 0 ? "one-time-code" : "off"}
-              maxLength={1}
-              value={digit}
-              onChange={(event) => updateDigit(index, event.target.value)}
-              onKeyDown={(event) => handleKeyDown(index, event)}
-              onPaste={handlePaste}
-              aria-label={`Code digit ${index + 1}`}
-              className="otp-digit h-14 rounded-md border border-line bg-mist text-center text-2xl font-semibold text-ink outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20"
-            />
-          ))}
-        </div>
+        <input
+          id="login-email"
+          type="email"
+          value={email}
+          onChange={(event) => {
+            setEmail(event.target.value);
+            setError("");
+          }}
+          className="mt-2 h-11 w-full rounded-md border border-line bg-mist px-3 text-sm text-ink outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20"
+        />
+        <label className="mt-4 block text-sm font-semibold text-ink" htmlFor="login-password">
+          Password
+        </label>
+        <input
+          id="login-password"
+          type="password"
+          value={password}
+          onChange={(event) => {
+            setPassword(event.target.value);
+            setError("");
+          }}
+          className="mt-2 h-11 w-full rounded-md border border-line bg-mist px-3 text-sm text-ink outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20"
+        />
         {error && <p className="mt-3 text-sm font-medium text-coral">{error}</p>}
-      </section>
+        <button type="submit" className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-md bg-forest px-4 text-sm font-semibold text-white hover:bg-forest/90">
+          Sign In
+        </button>
+      </form>
     </main>
   );
 }
 
-function AppShell({ children, onNavigate }) {
+function AppShell({ children, currentUser, onNavigate, onSignOut }) {
   return (
     <main className="min-h-screen bg-mist">
       <header className="border-b border-line bg-white">
@@ -424,6 +395,11 @@ function AppShell({ children, onNavigate }) {
             </span>
           </button>
           <div className="flex flex-wrap gap-2">
+            <div className="flex h-10 items-center gap-2 rounded-md border border-line bg-mist px-3 text-sm text-slate-600">
+              <UserRound size={16} />
+              <span className="font-semibold text-ink">{currentUser.name}</span>
+              <span>{currentUser.role}</span>
+            </div>
             <button
               type="button"
               onClick={() => onNavigate(makeRoute("product-catalog"))}
@@ -440,6 +416,14 @@ function AppShell({ children, onNavigate }) {
               <Plus size={17} />
               New Lead
             </button>
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-line bg-white px-4 text-sm font-semibold text-ink hover:border-forest"
+            >
+              <LogOut size={17} />
+              Sign Out
+            </button>
           </div>
         </div>
       </header>
@@ -448,8 +432,8 @@ function AppShell({ children, onNavigate }) {
   );
 }
 
-function Dashboard({ onNavigate, refreshKey }) {
-  const leads = useMemo(() => getLeads(), [refreshKey]);
+function Dashboard({ currentUser, onNavigate, refreshKey }) {
+  const leads = useMemo(() => getLeads().filter((lead) => canAccessLead(currentUser, lead)), [currentUser, refreshKey]);
   const proposals = useMemo(() => getProposals(), [refreshKey]);
 
   const contacts = leads.map((lead) => {
@@ -516,7 +500,7 @@ function Dashboard({ onNavigate, refreshKey }) {
   );
 }
 
-function IntakeScreen({ onNavigate, onDataChanged }) {
+function IntakeScreen({ currentUser, onNavigate, onDataChanged }) {
   const [jsonText, setJsonText] = useState(JSON.stringify(sampleRawAssessment, null, 2));
   const [error, setError] = useState("");
 
@@ -538,7 +522,8 @@ function IntakeScreen({ onNavigate, onDataChanged }) {
       return;
     }
 
-    const lead = saveLead(createLeadFromRawAssessment(parsed, AGENT_ID));
+    const agentId = currentUser.role === "agent" ? currentUser.agent_id : null;
+    const lead = saveLead(createLeadFromRawAssessment(parsed, agentId));
     onDataChanged();
     onNavigate(makeRoute("options", { leadId: lead.lead_id }));
   }
@@ -705,12 +690,12 @@ function ProductDetailScreen({ productId, onNavigate }) {
   );
 }
 
-function ProductOptionsScreen({ leadId, onNavigate, onDataChanged }) {
+function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }) {
   const lead = getLead(leadId);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [selectedRiders, setSelectedRiders] = useState([]);
 
-  if (!lead) {
+  if (!lead || !canAccessLead(currentUser, lead)) {
     return <MissingState title="Lead not found" onNavigate={onNavigate} />;
   }
 
@@ -734,7 +719,7 @@ function ProductOptionsScreen({ leadId, onNavigate, onDataChanged }) {
     const proposal = saveProposal({
       proposal_id: crypto.randomUUID(),
       lead_id: lead.lead_id,
-      agent_id: AGENT_ID,
+      agent_id: lead.agent_id || currentUser.agent_id,
       selected_product_id: selectedRecommendation.product_id,
       selected_riders: selectedRiders,
       coverage_snapshot: getCoverageSnapshot(selectedProduct, selectedRiders),
@@ -1024,12 +1009,12 @@ function ProposalDocument({ lead, proposal, clientView = false }) {
   );
 }
 
-function ProposalPreviewScreen({ proposalId, onNavigate, onDataChanged }) {
+function ProposalPreviewScreen({ currentUser, proposalId, onNavigate, onDataChanged }) {
   const [proposal, setProposal] = useState(() => getProposal(proposalId));
   const lead = proposal ? getLead(proposal.lead_id) : null;
   const [copied, setCopied] = useState(false);
 
-  if (!proposal || !lead) {
+  if (!proposal || !lead || !canAccessLead(currentUser, lead)) {
     return <MissingState title="Proposal not found" onNavigate={onNavigate} />;
   }
 
@@ -1190,7 +1175,7 @@ function PublicProposalScreen({ token, onDataChanged }) {
   );
 }
 
-function BookingScreen({ proposalId, onNavigate, onDataChanged }) {
+function BookingScreen({ currentUser, proposalId, onNavigate, onDataChanged }) {
   const [proposal, setProposal] = useState(() => getProposal(proposalId));
   const lead = proposal ? getLead(proposal.lead_id) : null;
   const product = proposal ? getProduct(proposal.selected_product_id) : null;
@@ -1199,7 +1184,7 @@ function BookingScreen({ proposalId, onNavigate, onDataChanged }) {
   const [meetingLocation, setMeetingLocation] = useState(() => proposal?.booking?.meeting_location || "Google Meet");
   const [notes, setNotes] = useState(() => proposal?.booking?.notes || "Proposal review and next steps.");
 
-  if (!proposal || !lead) {
+  if (!proposal || !lead || !canAccessLead(currentUser, lead)) {
     return <MissingState title="Booking record not found" onNavigate={onNavigate} />;
   }
 
@@ -1333,12 +1318,12 @@ function BookingScreen({ proposalId, onNavigate, onDataChanged }) {
   );
 }
 
-function CompleteScreen({ leadId, onNavigate, onDataChanged }) {
+function CompleteScreen({ currentUser, leadId, onNavigate, onDataChanged }) {
   const lead = getLead(leadId);
   const proposal = lead ? latestProposalForLead(getProposals(), lead.lead_id) : null;
   const product = proposal ? getProduct(proposal.selected_product_id) : null;
 
-  if (!lead) {
+  if (!lead || !canAccessLead(currentUser, lead)) {
     return <MissingState title="Contact not found" onNavigate={onNavigate} />;
   }
 
@@ -1404,7 +1389,7 @@ function MissingState({ title, onNavigate }) {
 }
 
 export default function App() {
-  const [authenticated, setAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState(() => readAuthSession());
   const [route, setRoute] = useState(parseRoute);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -1417,6 +1402,12 @@ export default function App() {
     setRefreshKey((value) => value + 1);
   }
 
+  function handleSignOut() {
+    clearAuthSession();
+    setCurrentUser(null);
+    handleNavigate(makeRoute("dashboard"));
+  }
+
   useEffect(() => {
     const handlePopState = () => setRoute(parseRoute());
     window.addEventListener("popstate", handlePopState);
@@ -1427,28 +1418,28 @@ export default function App() {
     return <PublicProposalScreen token={route.token} onDataChanged={handleDataChanged} />;
   }
 
-  if (!authenticated) {
-    return <LoginGate onAuthenticated={() => setAuthenticated(true)} />;
+  if (!currentUser) {
+    return <LoginGate onAuthenticated={setCurrentUser} />;
   }
 
   let content;
   if (route.name === "intake") {
-    content = <IntakeScreen onNavigate={handleNavigate} onDataChanged={handleDataChanged} />;
+    content = <IntakeScreen currentUser={currentUser} onNavigate={handleNavigate} onDataChanged={handleDataChanged} />;
   } else if (route.name === "product-catalog") {
     content = <ProductCatalogScreen onNavigate={handleNavigate} />;
   } else if (route.name === "product-detail") {
     content = <ProductDetailScreen productId={route.productId} onNavigate={handleNavigate} />;
   } else if (route.name === "options") {
-    content = <ProductOptionsScreen leadId={route.leadId} onNavigate={handleNavigate} onDataChanged={handleDataChanged} />;
+    content = <ProductOptionsScreen currentUser={currentUser} leadId={route.leadId} onNavigate={handleNavigate} onDataChanged={handleDataChanged} />;
   } else if (route.name === "proposal-preview") {
-    content = <ProposalPreviewScreen proposalId={route.proposalId} onNavigate={handleNavigate} onDataChanged={handleDataChanged} />;
+    content = <ProposalPreviewScreen currentUser={currentUser} proposalId={route.proposalId} onNavigate={handleNavigate} onDataChanged={handleDataChanged} />;
   } else if (route.name === "booking") {
-    content = <BookingScreen proposalId={route.proposalId} onNavigate={handleNavigate} onDataChanged={handleDataChanged} />;
+    content = <BookingScreen currentUser={currentUser} proposalId={route.proposalId} onNavigate={handleNavigate} onDataChanged={handleDataChanged} />;
   } else if (route.name === "complete") {
-    content = <CompleteScreen leadId={route.leadId} onNavigate={handleNavigate} onDataChanged={handleDataChanged} />;
+    content = <CompleteScreen currentUser={currentUser} leadId={route.leadId} onNavigate={handleNavigate} onDataChanged={handleDataChanged} />;
   } else {
-    content = <Dashboard onNavigate={handleNavigate} refreshKey={refreshKey} />;
+    content = <Dashboard currentUser={currentUser} onNavigate={handleNavigate} refreshKey={refreshKey} />;
   }
 
-  return <AppShell onNavigate={handleNavigate}>{content}</AppShell>;
+  return <AppShell currentUser={currentUser} onNavigate={handleNavigate} onSignOut={handleSignOut}>{content}</AppShell>;
 }
