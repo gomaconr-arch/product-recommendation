@@ -126,7 +126,12 @@ The initial schema is in `migrations/0001_create_intake_tables.sql` and creates:
 - `auth_sessions`
 - seeded Richard B agent record
 
-The backend intake path and superadmin agent management path are now D1-backed. The existing advisor lead/proposal workflow still uses browser `localStorage` through `src/lib/storage.js`; replacing those read/write paths with D1-backed endpoints remains the next storage migration.
+`migrations/0003_create_workflow_proposals.sql` adds:
+
+- advisor workflow timestamps on `leads`
+- `proposals`
+
+The backend intake path, superadmin agent management path, and advisor lead/proposal workflow are D1-backed through Pages Functions. The frontend still caches workflow records in browser `localStorage` through `src/lib/storage.js` and uses that cache as a local development fallback when the Pages Functions API is unavailable.
 
 ## Data Sources
 

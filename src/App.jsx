@@ -39,15 +39,17 @@ import { adaptRawAssessmentToMatchInput, createLeadFromRawAssessment, validateRa
 import { validateMatchingInput, validatePivotRules, validateProducts } from "./lib/validation.js";
 import {
   createPublicShareToken,
+  fetchProposalByTokenRemote,
   getLead,
   getLeads,
   getProposal,
   getProposalByToken,
   getProposals,
-  saveLead,
-  saveProposal,
-  updateLead,
-  updateProposal
+  saveLeadRemote,
+  saveProposalRemote,
+  syncWorkflowDataRemote,
+  updateLeadRemote,
+  updateProposalRemote
 } from "./lib/storage.js";
 
 const PROPOSAL_DISCLAIMER =
@@ -753,29 +755,34 @@ function Dashboard({ currentUser, onNavigate, refreshKey }) {
 function IntakeScreen({ currentUser, onNavigate, onDataChanged }) {
   const [jsonText, setJsonText] = useState(JSON.stringify(sampleRawAssessment, null, 2));
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     setError("");
+    setSubmitting(true);
 
     let parsed;
     try {
       parsed = JSON.parse(jsonText);
     } catch {
       setError("Paste a valid JSON object before continuing.");
+      setSubmitting(false);
       return;
     }
 
     const errors = validateRawAssessment(parsed);
     if (errors.length > 0) {
       setError(errors.join(" "));
+      setSubmitting(false);
       return;
     }
 
     const agentId = currentUser.role === "agent" ? currentUser.agent_id : null;
-    const lead = saveLead(createLeadFromRawAssessment(parsed, agentId));
+    const lead = await saveLeadRemote(createLeadFromRawAssessment(parsed, agentId));
     onDataChanged();
     onNavigate(makeRoute("options", { leadId: lead.lead_id }));
+    setSubmitting(false);
   }
 
   return (
@@ -803,9 +810,9 @@ function IntakeScreen({ currentUser, onNavigate, onDataChanged }) {
           </div>
         )}
         <div className="mt-5 flex justify-end">
-          <button type="submit" className="inline-flex h-11 items-center gap-2 rounded-md bg-forest px-4 text-sm font-semibold text-white hover:bg-forest/90">
+          <button type="submit" disabled={submitting} className="inline-flex h-11 items-center gap-2 rounded-md bg-forest px-4 text-sm font-semibold text-white hover:bg-forest/90 disabled:cursor-not-allowed disabled:bg-slate-300">
             <Clipboard size={17} />
-            Create Lead
+            {submitting ? "Creating" : "Create Lead"}
           </button>
         </div>
       </form>
@@ -944,6 +951,7 @@ function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }
   const lead = getLead(leadId);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [selectedRiders, setSelectedRiders] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
 
   if (!lead || !canAccessLead(currentUser, lead)) {
     return <MissingState title="Lead not found" onNavigate={onNavigate} />;
@@ -962,11 +970,12 @@ function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }
     });
   }
 
-  function generateProposal() {
+  async function generateProposal() {
     if (!selectedRecommendation) return;
     const selectedProduct = getProduct(selectedRecommendation.product_id);
     if (!selectedProduct) return;
-    const proposal = saveProposal({
+    setSubmitting(true);
+    const proposal = await saveProposalRemote({
       proposal_id: crypto.randomUUID(),
       lead_id: lead.lead_id,
       agent_id: lead.agent_id || currentUser.agent_id,
@@ -988,6 +997,7 @@ function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }
     });
     onDataChanged();
     onNavigate(makeRoute("proposal-preview", { proposalId: proposal.proposal_id }));
+    setSubmitting(false);
   }
 
   return (
@@ -1137,12 +1147,12 @@ function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }
           <div className="sticky bottom-0 flex justify-end border-t border-line bg-mist/95 py-4">
             <button
               type="button"
-              disabled={!selectedRecommendation}
+              disabled={!selectedRecommendation || submitting}
               onClick={generateProposal}
               className="inline-flex h-11 items-center gap-2 rounded-md bg-forest px-4 text-sm font-semibold text-white hover:bg-forest/90 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               <FileText size={17} />
-              Generate Client Proposal
+              {submitting ? "Generating" : "Generate Client Proposal"}
             </button>
           </div>
         </div>
@@ -1270,9 +1280,9 @@ function ProposalPreviewScreen({ currentUser, proposalId, onNavigate, onDataChan
 
   const shareUrl = buildProposalUrl(proposal.public_share_token);
 
-  function generateLink() {
+  async function generateLink() {
     const now = new Date().toISOString();
-    const updated = updateProposal(proposal.proposal_id, (current) => ({
+    const updated = await updateProposalRemote(proposal.proposal_id, (current) => ({
       ...current,
       status: current.status === "draft" ? "sent" : current.status,
       sent_at: current.sent_at || now
@@ -1341,20 +1351,52 @@ function ProposalPreviewScreen({ currentUser, proposalId, onNavigate, onDataChan
 
 function PublicProposalScreen({ token, onDataChanged }) {
   const [proposal, setProposal] = useState(() => getProposalByToken(token));
+  const [lead, setLead] = useState(() => {
+    const cachedProposal = getProposalByToken(token);
+    return cachedProposal ? getLead(cachedProposal.lead_id) : null;
+  });
   const [checked, setChecked] = useState(false);
-  const lead = proposal ? getLead(proposal.lead_id) : null;
+  const [loading, setLoading] = useState(() => {
+    const cachedProposal = getProposalByToken(token);
+    return !cachedProposal || !getLead(cachedProposal.lead_id);
+  });
+
+  useEffect(() => {
+    let active = true;
+    fetchProposalByTokenRemote(token).then(({ lead: fetchedLead, proposal: fetchedProposal }) => {
+      if (!active) return;
+      setLead(fetchedLead);
+      setProposal(fetchedProposal);
+      setLoading(false);
+      onDataChanged();
+    });
+    return () => {
+      active = false;
+    };
+  }, [token]);
 
   useEffect(() => {
     if (!proposal || proposal.viewed_at) return;
     const viewedAt = new Date().toISOString();
-    const updated = updateProposal(proposal.proposal_id, (current) => ({
+    updateProposalRemote(proposal.proposal_id, (current) => ({
       ...current,
       status: current.status === "sent" ? "viewed" : current.status,
       viewed_at: viewedAt
-    }));
-    setProposal(updated);
-    onDataChanged();
-  }, [proposal, onDataChanged]);
+    }), { publicToken: token }).then((updated) => {
+      setProposal(updated);
+      onDataChanged();
+    });
+  }, [proposal, token]);
+
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-mist px-5">
+        <section className="max-w-md rounded-lg border border-line bg-white p-6 text-center shadow-sm">
+          <h1 className="text-xl font-semibold text-ink">Loading proposal</h1>
+        </section>
+      </main>
+    );
+  }
 
   if (!proposal || !lead) {
     return (
@@ -1370,10 +1412,10 @@ function PublicProposalScreen({ token, onDataChanged }) {
 
   const accepted = proposal.status === "accepted";
 
-  function confirmInterest() {
+  async function confirmInterest() {
     if (!checked || accepted) return;
     const now = new Date().toISOString();
-    const updated = updateProposal(proposal.proposal_id, (current) => ({
+    const updated = await updateProposalRemote(proposal.proposal_id, (current) => ({
       ...current,
       status: "accepted",
       accepted_at: now,
@@ -1382,7 +1424,7 @@ function PublicProposalScreen({ token, onDataChanged }) {
         confirmed_at: now,
         ip_or_session_ref: `browser-session:${current.public_share_token.slice(0, 8)}`
       }
-    }));
+    }), { publicToken: token });
     setProposal(updated);
     onDataChanged();
   }
@@ -1442,10 +1484,10 @@ function BookingScreen({ currentUser, proposalId, onNavigate, onDataChanged }) {
     ? buildCalendarUrl({ lead, product, startDateTime, durationMinutes: Number(durationMinutes), meetingLocation, notes })
     : "";
 
-  function saveBooking(sent = false) {
-    if (!startDateTime) return;
+  async function saveBooking(sent = false) {
+    if (!startDateTime) return null;
     const now = new Date().toISOString();
-    const updated = updateProposal(proposal.proposal_id, (current) => ({
+    const updated = await updateProposalRemote(proposal.proposal_id, (current) => ({
       ...current,
       booking: {
         start_datetime: startDateTime,
@@ -1458,16 +1500,17 @@ function BookingScreen({ currentUser, proposalId, onNavigate, onDataChanged }) {
     }));
     setProposal(updated);
     onDataChanged();
+    return updated;
   }
 
-  function openCalendar() {
-    saveBooking(true);
+  async function openCalendar() {
+    await saveBooking(true);
     window.open(calendarUrl, "_blank", "noopener,noreferrer");
   }
 
-  function markCallDone() {
+  async function markCallDone() {
     const now = new Date().toISOString();
-    updateLead(lead.lead_id, (current) => ({
+    await updateLeadRemote(lead.lead_id, (current) => ({
       ...current,
       call_done_at: current.call_done_at || now
     }));
@@ -1577,9 +1620,9 @@ function CompleteScreen({ currentUser, leadId, onNavigate, onDataChanged }) {
     return <MissingState title="Contact not found" onNavigate={onNavigate} />;
   }
 
-  function markNewBusiness() {
+  async function markNewBusiness() {
     const now = new Date().toISOString();
-    updateLead(lead.lead_id, (current) => ({
+    await updateLeadRemote(lead.lead_id, (current) => ({
       ...current,
       new_business_at: current.new_business_at || now
     }));
@@ -1642,6 +1685,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(() => readAuthSession());
   const [route, setRoute] = useState(parseRoute);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [workflowLoaded, setWorkflowLoaded] = useState(false);
 
   function handleNavigate(nextRoute) {
     setRoute(nextRoute);
@@ -1670,12 +1714,40 @@ export default function App() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!currentUser) {
+      setWorkflowLoaded(false);
+      return;
+    }
+
+    let active = true;
+    setWorkflowLoaded(false);
+    syncWorkflowDataRemote().then(() => {
+      if (!active) return;
+      setWorkflowLoaded(true);
+      handleDataChanged();
+    });
+    return () => {
+      active = false;
+    };
+  }, [currentUser]);
+
   if (route.name === "public-proposal") {
     return <PublicProposalScreen token={route.token} onDataChanged={handleDataChanged} />;
   }
 
   if (!currentUser) {
     return <LoginGate onAuthenticated={setCurrentUser} />;
+  }
+
+  if (!workflowLoaded) {
+    return (
+      <AppShell currentUser={currentUser} onNavigate={handleNavigate} onSignOut={handleSignOut}>
+        <section className="rounded-lg border border-line bg-white p-8 text-center shadow-sm">
+          <h1 className="text-xl font-semibold text-ink">Loading pipeline</h1>
+        </section>
+      </AppShell>
+    );
   }
 
   let content;
