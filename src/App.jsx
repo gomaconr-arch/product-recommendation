@@ -14,14 +14,26 @@ import {
   Plus,
   ReceiptText,
   Radio,
+  Save,
   Send,
   ShieldCheck,
+  Trash2,
   UserRound
 } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
 import products from "../data/products.json";
 import pivotRules from "../data/pivot-rules.json";
-import { authenticateUser, canAccessLead, clearAuthSession, readAuthSession, saveAuthSession } from "./lib/auth.js";
+import {
+  SEEDED_AGENTS,
+  authenticateUser,
+  canAccessLead,
+  clearAuthSession,
+  deleteAgent,
+  getAgents,
+  readAuthSession,
+  saveAgent,
+  saveAuthSession
+} from "./lib/auth.js";
 import { getRecommendations } from "./lib/matchEngine.js";
 import { adaptRawAssessmentToMatchInput, createLeadFromRawAssessment, validateRawAssessment } from "./lib/rawAssessmentAdapter.js";
 import { validateMatchingInput, validatePivotRules, validateProducts } from "./lib/validation.js";
@@ -400,6 +412,16 @@ function AppShell({ children, currentUser, onNavigate, onSignOut }) {
               <span className="font-semibold text-ink">{currentUser.name}</span>
               <span>{currentUser.role}</span>
             </div>
+            {currentUser.role === "superadmin" && (
+              <button
+                type="button"
+                onClick={() => onNavigate(makeRoute("agents"))}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-line bg-white px-4 text-sm font-semibold text-ink hover:border-forest"
+              >
+                <UserRound size={17} />
+                Agents
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onNavigate(makeRoute("product-catalog"))}
@@ -429,6 +451,211 @@ function AppShell({ children, currentUser, onNavigate, onSignOut }) {
       </header>
       <div className="mx-auto max-w-6xl px-5 py-6">{children}</div>
     </main>
+  );
+}
+
+function createBlankAgentForm() {
+  return {
+    user_id: "",
+    name: "",
+    email: "",
+    password: "",
+    agent_slug: "",
+    assessment_url: ""
+  };
+}
+
+function AgentManagementScreen({ currentUser, onNavigate }) {
+  const [agents, setAgents] = useState(() => getAgents());
+  const [form, setForm] = useState(createBlankAgentForm);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const seededAgentIds = useMemo(() => new Set(SEEDED_AGENTS.map((agent) => agent.user_id)), []);
+
+  if (currentUser.role !== "superadmin") {
+    return <MissingState title="Agent management is only available to superadmin users" onNavigate={onNavigate} />;
+  }
+
+  function refreshAgents() {
+    setAgents(getAgents());
+  }
+
+  function updateForm(field, value) {
+    setForm((current) => {
+      const next = { ...current, [field]: value };
+      if (field === "agent_slug" && !current.assessment_url) {
+        next.assessment_url = `https://assess.lablibre.com/${value.trim().toLowerCase()}`;
+      }
+      return next;
+    });
+    setError("");
+    setMessage("");
+  }
+
+  function editAgent(agent) {
+    setForm({
+      user_id: agent.user_id,
+      name: agent.name,
+      email: agent.email,
+      password: agent.password,
+      agent_slug: agent.agent_slug,
+      assessment_url: agent.assessment_url
+    });
+    setError("");
+    setMessage("");
+  }
+
+  function resetForm() {
+    setForm(createBlankAgentForm());
+    setError("");
+    setMessage("");
+  }
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    try {
+      const saved = saveAgent(form);
+      refreshAgents();
+      setForm({
+        user_id: saved.user_id,
+        name: saved.name,
+        email: saved.email,
+        password: saved.password,
+        agent_slug: saved.agent_slug,
+        assessment_url: saved.assessment_url
+      });
+      setMessage(`${saved.name} saved.`);
+      setError("");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to save agent.");
+      setMessage("");
+    }
+  }
+
+  function handleDelete(agent) {
+    if (seededAgentIds.has(agent.user_id)) return;
+    deleteAgent(agent.user_id);
+    refreshAgents();
+    if (form.user_id === agent.user_id) resetForm();
+  }
+
+  return (
+    <section>
+      <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.08em] text-forest">Superadmin</p>
+          <h1 className="mt-2 text-2xl font-semibold text-ink">Manage Agents</h1>
+          <p className="text-sm text-slate-500">Create agent logins and keep their assessment links aligned to their slug.</p>
+        </div>
+        <button
+          type="button"
+          onClick={resetForm}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-line bg-white px-4 text-sm font-semibold text-ink hover:border-forest"
+        >
+          <Plus size={16} />
+          New Agent
+        </button>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="rounded-lg border border-line bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-ink">Agents</h2>
+          <div className="mt-4 space-y-3">
+            {agents.map((agent) => {
+              const isSeeded = seededAgentIds.has(agent.user_id);
+              return (
+                <article key={agent.user_id} className="rounded-md border border-line bg-mist p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold text-ink">{agent.name}</h3>
+                        {isSeeded && <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-500">Seeded</span>}
+                      </div>
+                      <p className="mt-1 text-sm text-slate-600">{agent.email}</p>
+                      <p className="mt-2 break-all text-xs text-slate-500">{agent.assessment_url}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => editAgent(agent)}
+                        className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink hover:border-forest"
+                      >
+                        Edit
+                      </button>
+                      {!isSeeded && (
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(agent)}
+                          className="inline-flex h-9 items-center justify-center rounded-md border border-coral/30 bg-white px-3 text-sm font-semibold text-coral hover:bg-coral/5"
+                          aria-label={`Delete ${agent.name}`}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
+        <form onSubmit={handleSubmit} className="h-fit rounded-lg border border-line bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-ink">{form.user_id ? "Edit Agent" : "New Agent"}</h2>
+          <label className="mt-4 block text-sm font-semibold text-ink">
+            Agent name
+            <input
+              type="text"
+              value={form.name}
+              onChange={(event) => updateForm("name", event.target.value)}
+              className="mt-2 h-11 w-full rounded-md border border-line bg-mist px-3 text-sm outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20"
+            />
+          </label>
+          <label className="mt-4 block text-sm font-semibold text-ink">
+            Email
+            <input
+              type="email"
+              value={form.email}
+              onChange={(event) => updateForm("email", event.target.value)}
+              className="mt-2 h-11 w-full rounded-md border border-line bg-mist px-3 text-sm outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20"
+            />
+          </label>
+          <label className="mt-4 block text-sm font-semibold text-ink">
+            Password
+            <input
+              type="text"
+              value={form.password}
+              onChange={(event) => updateForm("password", event.target.value)}
+              className="mt-2 h-11 w-full rounded-md border border-line bg-mist px-3 text-sm outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20"
+            />
+          </label>
+          <label className="mt-4 block text-sm font-semibold text-ink">
+            Agent slug
+            <input
+              type="text"
+              value={form.agent_slug}
+              onChange={(event) => updateForm("agent_slug", event.target.value)}
+              className="mt-2 h-11 w-full rounded-md border border-line bg-mist px-3 text-sm outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20"
+            />
+          </label>
+          <label className="mt-4 block text-sm font-semibold text-ink">
+            Assessment URL
+            <input
+              type="url"
+              value={form.assessment_url}
+              onChange={(event) => updateForm("assessment_url", event.target.value)}
+              className="mt-2 h-11 w-full rounded-md border border-line bg-mist px-3 text-sm outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20"
+            />
+          </label>
+          {error && <p className="mt-4 rounded-md border border-coral/30 bg-coral/5 p-3 text-sm font-medium text-coral">{error}</p>}
+          {message && <p className="mt-4 rounded-md border border-forest/20 bg-forest/5 p-3 text-sm font-medium text-forest">{message}</p>}
+          <button type="submit" className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-forest px-4 text-sm font-semibold text-white hover:bg-forest/90">
+            <Save size={17} />
+            Save Agent
+          </button>
+        </form>
+      </div>
+    </section>
   );
 }
 
@@ -1425,6 +1652,8 @@ export default function App() {
   let content;
   if (route.name === "intake") {
     content = <IntakeScreen currentUser={currentUser} onNavigate={handleNavigate} onDataChanged={handleDataChanged} />;
+  } else if (route.name === "agents") {
+    content = <AgentManagementScreen currentUser={currentUser} onNavigate={handleNavigate} />;
   } else if (route.name === "product-catalog") {
     content = <ProductCatalogScreen onNavigate={handleNavigate} />;
   } else if (route.name === "product-detail") {

@@ -20,6 +20,8 @@ The current advisor workspace uses seeded frontend login accounts:
 
 Richard B is configured with agent slug `richardo` and assessment URL `https://assess.lablibre.com/richardo`. The superadmin account is not tied to an agent profile and can see all local records. The agent account only sees local records tagged with its agent ID.
 
+After signing in as superadmin, use **Agents** in the header to create or edit agent logins. New agents are stored in browser `localStorage` and can sign in immediately on that browser.
+
 This is a first-pass login gate for the current frontend/localStorage workspace. Replace it with server-backed authentication before relying on it for sensitive production access.
 
 ## Test
