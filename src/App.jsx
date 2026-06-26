@@ -21,6 +21,7 @@ import {
   UserRound
 } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
+import packageInfo from "../package.json";
 import products from "../data/products.json";
 import pivotRules from "../data/pivot-rules.json";
 import {
@@ -54,6 +55,7 @@ import {
 
 const PROPOSAL_DISCLAIMER =
   "This proposal is based on the information you provided and is subject to final underwriting and review.";
+const APP_VERSION = packageInfo.version;
 
 const WORKFLOW_STEPS = [
   "Paste assessment JSON",
@@ -335,7 +337,7 @@ function WorkflowStepper({ currentStep }) {
 }
 
 function LoginGate({ onAuthenticated }) {
-  const [email, setEmail] = useState("root@root.local");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -392,6 +394,7 @@ function LoginGate({ onAuthenticated }) {
         <button type="submit" disabled={submitting} className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-md bg-forest px-4 text-sm font-semibold text-white hover:bg-forest/90 disabled:cursor-not-allowed disabled:bg-slate-300">
           {submitting ? "Signing In" : "Sign In"}
         </button>
+        <p className="mt-5 text-center text-xs font-medium text-slate-400">Version {APP_VERSION}</p>
       </form>
     </main>
   );
@@ -778,11 +781,16 @@ function IntakeScreen({ currentUser, onNavigate, onDataChanged }) {
       return;
     }
 
-    const agentId = currentUser.role === "agent" ? currentUser.agent_id : null;
-    const lead = await saveLeadRemote(createLeadFromRawAssessment(parsed, agentId));
-    onDataChanged();
-    onNavigate(makeRoute("options", { leadId: lead.lead_id }));
-    setSubmitting(false);
+    try {
+      const agentId = currentUser.role === "agent" ? currentUser.agent_id : null;
+      const lead = await saveLeadRemote(createLeadFromRawAssessment(parsed, agentId));
+      onDataChanged();
+      onNavigate(makeRoute("options", { leadId: lead.lead_id }));
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to save lead.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -1686,6 +1694,7 @@ export default function App() {
   const [route, setRoute] = useState(parseRoute);
   const [refreshKey, setRefreshKey] = useState(0);
   const [workflowLoaded, setWorkflowLoaded] = useState(false);
+  const [workflowError, setWorkflowError] = useState("");
 
   function handleNavigate(nextRoute) {
     setRoute(nextRoute);
@@ -1722,10 +1731,15 @@ export default function App() {
 
     let active = true;
     setWorkflowLoaded(false);
+    setWorkflowError("");
     syncWorkflowDataRemote().then(() => {
       if (!active) return;
       setWorkflowLoaded(true);
       handleDataChanged();
+    }).catch((loadError) => {
+      if (!active) return;
+      setWorkflowError(loadError instanceof Error ? loadError.message : "Unable to load workflow data.");
+      setWorkflowLoaded(true);
     });
     return () => {
       active = false;
@@ -1745,6 +1759,17 @@ export default function App() {
       <AppShell currentUser={currentUser} onNavigate={handleNavigate} onSignOut={handleSignOut}>
         <section className="rounded-lg border border-line bg-white p-8 text-center shadow-sm">
           <h1 className="text-xl font-semibold text-ink">Loading pipeline</h1>
+        </section>
+      </AppShell>
+    );
+  }
+
+  if (workflowError) {
+    return (
+      <AppShell currentUser={currentUser} onNavigate={handleNavigate} onSignOut={handleSignOut}>
+        <section className="rounded-lg border border-red-200 bg-white p-8 shadow-sm">
+          <h1 className="text-xl font-semibold text-red-700">Unable to load pipeline</h1>
+          <p className="mt-2 text-sm text-slate-600">{workflowError}</p>
         </section>
       </AppShell>
     );

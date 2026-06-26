@@ -1,5 +1,14 @@
 const LEADS_KEY = "product_recommendation.leads.v1";
 const PROPOSALS_KEY = "product_recommendation.proposals.v1";
+const ALLOW_LOCAL_FALLBACK = import.meta.env?.DEV === true;
+
+function shouldUseLocalFallback() {
+  return ALLOW_LOCAL_FALLBACK;
+}
+
+function remoteRequiredMessage(recordName) {
+  return `Unable to save ${recordName} to D1. Check that the production /api endpoint is deployed and the DB binding is configured.`;
+}
 
 function readCollection(key) {
   try {
@@ -53,7 +62,10 @@ export async function saveLeadRemote(lead) {
       body: JSON.stringify(lead)
     });
     return saveLead(body.lead || lead);
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error(error instanceof Error ? error.message : remoteRequiredMessage("lead"));
+    }
     return saveLead(lead);
   }
 }
@@ -81,7 +93,10 @@ export async function updateLeadRemote(leadId, updater) {
       body: JSON.stringify(next)
     });
     return saveLead(body.lead || next);
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error(error instanceof Error ? error.message : remoteRequiredMessage("lead"));
+    }
     return updateLead(leadId, () => next);
   }
 }
@@ -107,7 +122,10 @@ export async function saveProposalRemote(proposal) {
       body: JSON.stringify(proposal)
     });
     return saveProposal(body.proposal || proposal);
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error(error instanceof Error ? error.message : remoteRequiredMessage("proposal"));
+    }
     return saveProposal(proposal);
   }
 }
@@ -136,7 +154,10 @@ export async function updateProposalRemote(proposalId, updater, options = {}) {
       body: JSON.stringify(next)
     });
     return saveProposal(body.proposal || next);
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error(error instanceof Error ? error.message : remoteRequiredMessage("proposal"));
+    }
     return updateProposal(proposalId, () => next);
   }
 }
@@ -161,7 +182,10 @@ export async function syncWorkflowDataRemote() {
       leads: Array.isArray(leadsBody.leads) ? leadsBody.leads : getLeads(),
       proposals: Array.isArray(proposalsBody.proposals) ? proposalsBody.proposals : getProposals()
     };
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error(error instanceof Error ? error.message : "Unable to load workflow data from D1.");
+    }
     return {
       leads: getLeads(),
       proposals: getProposals()
@@ -178,7 +202,10 @@ export async function fetchProposalByTokenRemote(token) {
       lead: body.lead || null,
       proposal: body.proposal || null
     };
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error(error instanceof Error ? error.message : "Unable to load proposal from D1.");
+    }
     const proposal = getProposalByToken(token);
     return {
       lead: proposal ? getLead(proposal.lead_id) : null,
