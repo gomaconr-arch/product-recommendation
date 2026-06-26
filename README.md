@@ -20,9 +20,9 @@ The current advisor workspace uses seeded frontend login accounts:
 
 Richard B is configured with agent slug `richardo` and assessment URL `https://assess.lablibre.com/richardo`. The superadmin account is not tied to an agent profile and can see all local records. The agent account only sees local records tagged with its agent ID.
 
-After signing in as superadmin, use **Agents** in the header to create or edit agent logins. New agents are stored in browser `localStorage` and can sign in immediately on that browser.
+After signing in as superadmin, use **Agents** in the header to create or edit agent logins. In Cloudflare Pages, agent login and management use D1 through Pages Functions. If those APIs are unavailable during local development, the frontend falls back to browser `localStorage`.
 
-This is a first-pass login gate for the current frontend/localStorage workspace. Replace it with server-backed authentication before relying on it for sensitive production access.
+This is still a first-pass password model. Passwords are currently stored as plain text in the D1 `agents` table to match the seeded login behavior; replace this with hashed passwords before relying on it for sensitive production access.
 
 ## Test
 
@@ -120,7 +120,13 @@ The initial schema is in `migrations/0001_create_intake_tables.sql` and creates:
 - `recommendations`
 - `intake_logs`
 
-The current frontend still uses browser `localStorage` through `src/lib/storage.js`. The backend intake path is now D1-backed; replacing the existing advisor UI data source with D1-backed read/list endpoints remains a separate follow-up.
+`migrations/0002_create_agents_and_sessions.sql` adds:
+
+- `agents`
+- `auth_sessions`
+- seeded Richard B agent record
+
+The backend intake path and superadmin agent management path are now D1-backed. The existing advisor lead/proposal workflow still uses browser `localStorage` through `src/lib/storage.js`; replacing those read/write paths with D1-backed endpoints remains the next storage migration.
 
 ## Data Sources
 

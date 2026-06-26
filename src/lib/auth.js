@@ -65,7 +65,7 @@ function writeStoredAgents(agents) {
 function normalizeAgent(agent, existingAgent = null) {
   const name = cleanString(agent.name);
   const email = cleanString(agent.email).toLowerCase();
-  const password = cleanString(agent.password);
+  const password = cleanString(agent.password) || existingAgent?.password || "";
   const agentSlug = slugify(agent.agent_slug || agent.agent_id || name);
   const now = new Date().toISOString();
 
@@ -114,6 +114,41 @@ export function authenticateUser(email, password) {
   return withoutPassword(user);
 }
 
+async function requestJson(path, options = {}) {
+  const response = await fetch(path, {
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    },
+    ...options
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.ok === false) {
+    throw new Error(body.error || "Request failed.");
+  }
+  return body;
+}
+
+export async function authenticateUserRemote(email, password) {
+  try {
+    const body = await requestJson("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password })
+    });
+    if (body.user) {
+      saveAuthSession(body.user);
+      return body.user;
+    }
+  } catch {
+    const user = authenticateUser(email, password);
+    if (user) saveAuthSession(user);
+    return user;
+  }
+
+  return null;
+}
+
 export function readAuthSession() {
   const storage = getStorage();
   if (!storage) return null;
@@ -127,6 +162,20 @@ export function readAuthSession() {
   }
 }
 
+export async function fetchAuthSession() {
+  try {
+    const body = await requestJson("/api/auth/session");
+    if (body.user) {
+      saveAuthSession(body.user);
+      return body.user;
+    }
+  } catch {
+    return readAuthSession();
+  }
+
+  return null;
+}
+
 export function saveAuthSession(user) {
   const storage = getStorage();
   if (!storage) return;
@@ -137,6 +186,15 @@ export function clearAuthSession() {
   const storage = getStorage();
   if (!storage) return;
   storage.removeItem(AUTH_SESSION_KEY);
+}
+
+export async function clearAuthSessionRemote() {
+  try {
+    await requestJson("/api/auth/logout", { method: "POST" });
+  } catch {
+    // Local fallback still clears the browser-side session below.
+  }
+  clearAuthSession();
 }
 
 export function saveAgent(agent) {
@@ -161,10 +219,41 @@ export function saveAgent(agent) {
   return normalizedAgent;
 }
 
+export async function fetchAgentsRemote() {
+  try {
+    const body = await requestJson("/api/agents");
+    return Array.isArray(body.agents) ? body.agents : [];
+  } catch {
+    return getAgents().map(withoutPassword);
+  }
+}
+
+export async function saveAgentRemote(agent) {
+  try {
+    const body = await requestJson("/api/agents", {
+      method: "POST",
+      body: JSON.stringify(agent)
+    });
+    return body.agent;
+  } catch {
+    return withoutPassword(saveAgent(agent));
+  }
+}
+
 export function deleteAgent(userId) {
   const agent = getAgents().find((item) => item.user_id === userId);
   if (!agent) return;
   writeStoredAgents(getAgents().filter((item) => item.user_id !== userId));
+}
+
+export async function deleteAgentRemote(userId) {
+  try {
+    await requestJson(`/api/agents?user_id=${encodeURIComponent(userId)}`, {
+      method: "DELETE"
+    });
+  } catch {
+    deleteAgent(userId);
+  }
 }
 
 export function canAccessLead(user, lead) {

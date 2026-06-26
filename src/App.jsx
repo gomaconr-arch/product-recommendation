@@ -25,14 +25,14 @@ import products from "../data/products.json";
 import pivotRules from "../data/pivot-rules.json";
 import {
   SEEDED_AGENTS,
-  authenticateUser,
+  authenticateUserRemote,
   canAccessLead,
-  clearAuthSession,
-  deleteAgent,
-  getAgents,
+  clearAuthSessionRemote,
+  deleteAgentRemote,
+  fetchAgentsRemote,
+  fetchAuthSession,
   readAuthSession,
-  saveAgent,
-  saveAuthSession
+  saveAgentRemote
 } from "./lib/auth.js";
 import { getRecommendations } from "./lib/matchEngine.js";
 import { adaptRawAssessmentToMatchInput, createLeadFromRawAssessment, validateRawAssessment } from "./lib/rawAssessmentAdapter.js";
@@ -336,17 +336,20 @@ function LoginGate({ onAuthenticated }) {
   const [email, setEmail] = useState("root@root.local");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
-    const user = authenticateUser(email, password);
+    setSubmitting(true);
+    const user = await authenticateUserRemote(email, password);
     if (user) {
-      saveAuthSession(user);
       onAuthenticated(user);
+      setSubmitting(false);
       return;
     }
 
     setError("Email or password is incorrect.");
+    setSubmitting(false);
   }
 
   return (
@@ -384,8 +387,8 @@ function LoginGate({ onAuthenticated }) {
           className="mt-2 h-11 w-full rounded-md border border-line bg-mist px-3 text-sm text-ink outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20"
         />
         {error && <p className="mt-3 text-sm font-medium text-coral">{error}</p>}
-        <button type="submit" className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-md bg-forest px-4 text-sm font-semibold text-white hover:bg-forest/90">
-          Sign In
+        <button type="submit" disabled={submitting} className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-md bg-forest px-4 text-sm font-semibold text-white hover:bg-forest/90 disabled:cursor-not-allowed disabled:bg-slate-300">
+          {submitting ? "Signing In" : "Sign In"}
         </button>
       </form>
     </main>
@@ -466,18 +469,36 @@ function createBlankAgentForm() {
 }
 
 function AgentManagementScreen({ currentUser, onNavigate }) {
-  const [agents, setAgents] = useState(() => getAgents());
+  const [agents, setAgents] = useState([]);
   const [form, setForm] = useState(createBlankAgentForm);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   const seededAgentIds = useMemo(() => new Set(SEEDED_AGENTS.map((agent) => agent.user_id)), []);
+
+  useEffect(() => {
+    let active = true;
+    fetchAgentsRemote()
+      .then((nextAgents) => {
+        if (active) setAgents(nextAgents);
+      })
+      .catch((loadError) => {
+        if (active) setError(loadError instanceof Error ? loadError.message : "Unable to load agents.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   if (currentUser.role !== "superadmin") {
     return <MissingState title="Agent management is only available to superadmin users" onNavigate={onNavigate} />;
   }
 
-  function refreshAgents() {
-    setAgents(getAgents());
+  async function refreshAgents() {
+    setAgents(await fetchAgentsRemote());
   }
 
   function updateForm(field, value) {
@@ -497,7 +518,7 @@ function AgentManagementScreen({ currentUser, onNavigate }) {
       user_id: agent.user_id,
       name: agent.name,
       email: agent.email,
-      password: agent.password,
+      password: agent.password || "",
       agent_slug: agent.agent_slug,
       assessment_url: agent.assessment_url
     });
@@ -511,16 +532,16 @@ function AgentManagementScreen({ currentUser, onNavigate }) {
     setMessage("");
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     try {
-      const saved = saveAgent(form);
-      refreshAgents();
+      const saved = await saveAgentRemote(form);
+      await refreshAgents();
       setForm({
         user_id: saved.user_id,
         name: saved.name,
         email: saved.email,
-        password: saved.password,
+        password: form.password,
         agent_slug: saved.agent_slug,
         assessment_url: saved.assessment_url
       });
@@ -532,10 +553,10 @@ function AgentManagementScreen({ currentUser, onNavigate }) {
     }
   }
 
-  function handleDelete(agent) {
+  async function handleDelete(agent) {
     if (seededAgentIds.has(agent.user_id)) return;
-    deleteAgent(agent.user_id);
-    refreshAgents();
+    await deleteAgentRemote(agent.user_id);
+    await refreshAgents();
     if (form.user_id === agent.user_id) resetForm();
   }
 
@@ -561,6 +582,7 @@ function AgentManagementScreen({ currentUser, onNavigate }) {
         <section className="rounded-lg border border-line bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-ink">Agents</h2>
           <div className="mt-4 space-y-3">
+            {loading && <p className="rounded-md border border-dashed border-line p-3 text-sm text-slate-500">Loading agents</p>}
             {agents.map((agent) => {
               const isSeeded = seededAgentIds.has(agent.user_id);
               return (
@@ -621,11 +643,12 @@ function AgentManagementScreen({ currentUser, onNavigate }) {
             />
           </label>
           <label className="mt-4 block text-sm font-semibold text-ink">
-            Password
+            {form.user_id ? "New password" : "Password"}
             <input
               type="text"
               value={form.password}
               onChange={(event) => updateForm("password", event.target.value)}
+              placeholder={form.user_id ? "Leave blank to keep current password" : ""}
               className="mt-2 h-11 w-full rounded-md border border-line bg-mist px-3 text-sm outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20"
             />
           </label>
@@ -1629,8 +1652,8 @@ export default function App() {
     setRefreshKey((value) => value + 1);
   }
 
-  function handleSignOut() {
-    clearAuthSession();
+  async function handleSignOut() {
+    await clearAuthSessionRemote();
     setCurrentUser(null);
     handleNavigate(makeRoute("dashboard"));
   }
@@ -1639,6 +1662,12 @@ export default function App() {
     const handlePopState = () => setRoute(parseRoute());
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    fetchAuthSession().then((user) => {
+      if (user) setCurrentUser(user);
+    });
   }, []);
 
   if (route.name === "public-proposal") {
