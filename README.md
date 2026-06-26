@@ -18,6 +18,97 @@ npm test
 npm run build
 ```
 
+## Assessment Intake API
+
+Cloudflare Pages Functions exposes:
+
+```text
+POST /api/assessment-intake
+```
+
+The endpoint accepts raw Financial Foundation Check assessment JSON from `free-assess`, validates required lead fields and consent with `src/lib/rawAssessmentAdapter.js`, adapts the payload to `financial_foundation_matching_input.v1`, runs `src/lib/matchEngine.js`, and persists the raw payload, lead, matching input, recommendation result, and intake log to D1.
+
+Successful response:
+
+```json
+{
+  "ok": true,
+  "leadId": "generated-lead-id",
+  "recommendationId": "generated-recommendation-id"
+}
+```
+
+Error response:
+
+```json
+{
+  "ok": false,
+  "error": "Readable error message"
+}
+```
+
+### Security
+
+Set `ASSESSMENT_INTAKE_SECRET` in Cloudflare Pages production environment variables. When this variable is set, callers must send:
+
+```text
+X-Assessment-Secret: <secret>
+```
+
+If `ASSESSMENT_INTAKE_SECRET` is not set, requests are allowed for local/dev ease. Do not expose this secret to frontend code.
+
+`free-assess` should point to:
+
+```text
+EXTERNAL_SYSTEM_ENDPOINT=https://leads.lablibre.com/api/assessment-intake
+EXTERNAL_SYSTEM_SHARED_SECRET=<same secret as ASSESSMENT_INTAKE_SECRET>
+```
+
+or configure its assessment payload with:
+
+```json
+{
+  "externalSystemEndpoint": "https://leads.lablibre.com/api/assessment-intake"
+}
+```
+
+## Cloudflare D1 Setup
+
+Create the D1 database:
+
+```bash
+npx wrangler d1 create product-recommendation
+```
+
+Apply the migration:
+
+```bash
+npx wrangler d1 migrations apply product-recommendation
+```
+
+For local Pages development, use the same migration with Wrangler Pages:
+
+```bash
+npx wrangler pages dev dist --d1 DB=product-recommendation
+```
+
+In the Cloudflare dashboard, configure the Pages project D1 binding:
+
+- Binding name: `DB`
+- Database: the D1 database created above
+
+Also add the production environment variable:
+
+- `ASSESSMENT_INTAKE_SECRET`
+
+The initial schema is in `migrations/0001_create_intake_tables.sql` and creates:
+
+- `leads`
+- `recommendations`
+- `intake_logs`
+
+The current frontend still uses browser `localStorage` through `src/lib/storage.js`. The backend intake path is now D1-backed; replacing the existing advisor UI data source with D1-backed read/list endpoints remains a separate follow-up.
+
 ## Data Sources
 
 Editable matching data lives only in:
