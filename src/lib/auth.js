@@ -142,6 +142,16 @@ export async function authenticateUserRemote(email, password) {
       body: JSON.stringify({ email, password })
     });
     if (body.user) {
+      if (!shouldUseLocalFallback()) {
+        const sessionBody = await requestJson("/api/auth/session");
+        if (!sessionBody.user) {
+          clearAuthSession();
+          throw new Error("Login succeeded, but the server session cookie was not stored.");
+        }
+        saveAuthSession(sessionBody.user);
+        return sessionBody.user;
+      }
+
       saveAuthSession(body.user);
       return body.user;
     }
