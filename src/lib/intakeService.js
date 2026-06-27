@@ -1,6 +1,6 @@
 import { adaptRawAssessmentToMatchInput, createLeadFromRawAssessment } from "./rawAssessmentAdapter.js";
 import { getRecommendations } from "./matchEngine.js";
-import { validateMatchingInput, validatePivotRules, validateProducts } from "./validation.js";
+import { validateIntakeMatchingInput, validateIntakePivotRules, validateIntakeProducts } from "./intakeValidation.js";
 
 function stringifyJson(value) {
   return JSON.stringify(value);
@@ -118,14 +118,14 @@ export async function processAssessmentIntake({ rawPayload, db, products, pivotR
     throw new Error("D1 database binding DB is not configured.");
   }
 
-  validateProducts(products);
-  validatePivotRules(pivotRules);
+  validateIntakeProducts(products);
+  validateIntakePivotRules(pivotRules);
 
   const createdAt = new Date().toISOString();
   const lead = createLeadFromRawAssessment(rawPayload, agentId);
   const leadRecord = toLeadRecord(lead, rawPayload);
   const matchingInput = adaptRawAssessmentToMatchInput(rawPayload);
-  validateMatchingInput(matchingInput);
+  validateIntakeMatchingInput(matchingInput);
 
   const recommendationResult = getRecommendations(matchingInput, products, pivotRules);
   const recommendationRecord = {
