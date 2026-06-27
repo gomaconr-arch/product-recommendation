@@ -24,6 +24,14 @@ function roundScore(score) {
   return Math.round(score * 10) / 10;
 }
 
+function toMatchPercentage(score) {
+  return Math.max(0, Math.min(100, Math.round(score * 10)));
+}
+
+function makeIndicator(id, label, tone = "positive") {
+  return { id, label, tone };
+}
+
 function isBudgetFilterApplicable(budgetRangeId) {
   return Boolean(budgetRangeId && budgetRangeId !== "unsure");
 }
@@ -118,14 +126,17 @@ function buildRecommendation(input, product, pivotRules) {
 
   let score = 0;
   const reasoning = [];
+  const indicators = [];
 
   if (focusMatched) {
     score += weights.focus_match;
     reasoning.push(`Matches your selected focus: ${FOCUS_LABELS[focusId] || focusId}`);
+    indicators.push(makeIndicator("focus", "Goal fit"));
   }
 
   if (priorityMatches.length > 0) {
     score += weights.priority_match * priorityMatches.length;
+    indicators.push(makeIndicator("priority", "Priority fit"));
     if (product.product_id === "prumillion-protect") {
       reasoning.push("Budget-efficient option for income/family protection");
     } else {
@@ -136,14 +147,17 @@ function buildRecommendation(input, product, pivotRules) {
   for (const rule of gapRules) {
     score += weights.protection_gap_boost;
     reasoning.push(rule.reason);
+    indicators.push(makeIndicator("gap", "Protection gap"));
   }
 
   if (budgetMatched && budgetRangeId !== "unsure") {
     score += weights.budget_band_match;
     const label = input.matching_constraints.budget_range_label;
     reasoning.push(label ? `Fits your stated budget comfort (${label.replace("PHP ", "PHP ")})` : "Fits within your stated budget range");
+    indicators.push(makeIndicator("budget", "Budget fit"));
   } else if (budgetRangeId === "unsure") {
     reasoning.push("Can be reviewed even while your preferred budget is still being clarified");
+    indicators.push(makeIndicator("budget_review", "Budget review", "neutral"));
   }
 
   if (
@@ -151,6 +165,7 @@ function buildRecommendation(input, product, pivotRules) {
     product.payment_structure.pay_type === pivotRules.protection_gap_rules.low_emergency_fund?.boost_payment_structure
   ) {
     reasoning.push("Keeps flexibility in view while emergency savings are still building");
+    indicators.push(makeIndicator("flexibility", "Flexible payments", "neutral"));
   }
 
   if (readiness) {
@@ -163,23 +178,58 @@ function buildRecommendation(input, product, pivotRules) {
   return {
     product,
     match_score: roundScore(score),
+    match_percentage: toMatchPercentage(score),
     reasoning: unique(reasoning),
+    indicators: indicators.filter((indicator, index, list) => list.findIndex((item) => item.id === indicator.id) === index),
     compliance_flags: getComplianceFlags(product)
   };
 }
 
-function passesHardFilters(input, product) {
-  if (!product.is_active) return false;
+function getIneligibilityReasons(input, product) {
+  const reasons = [];
+
+  if (!product.is_active) reasons.push("Product is currently inactive.");
 
   const age = input.applicant_profile.age;
-  if (age < product.suitability_rules.min_age || age > product.suitability_rules.max_age) return false;
+  if (age < product.suitability_rules.min_age || age > product.suitability_rules.max_age) {
+    reasons.push(`Client age ${age} is outside the allowed age range ${product.suitability_rules.min_age}-${product.suitability_rules.max_age}.`);
+  }
 
   const budgetRangeId = input.matching_constraints.budget_range_id;
-  if (isBudgetFilterApplicable(budgetRangeId) && !hasBudgetFit(product, budgetRangeId)) return false;
+  if (isBudgetFilterApplicable(budgetRangeId) && !hasBudgetFit(product, budgetRangeId)) {
+    reasons.push("Estimated payment is above the client's stated budget comfort.");
+  }
 
-  return !product.suitability_rules.not_recommended_if.some((condition) =>
+  const blockedConditions = product.suitability_rules.not_recommended_if.filter((condition) =>
     notRecommendedConditionMatches(condition, input)
   );
+  if (blockedConditions.length > 0) {
+    reasons.push("Assessment answers suggest this product is not the clearest next step.");
+  }
+
+  return reasons;
+}
+
+function passesHardFilters(input, product) {
+  return getIneligibilityReasons(input, product).length === 0;
+}
+
+function mapRecommendationResult(result, index, overrides = {}) {
+  return {
+    rank: index + 1,
+    product_id: result.product.product_id,
+    product_name: result.product.product_name,
+    product_type: result.product.product_type,
+    tagline: result.product.tagline,
+    match_score: result.match_score,
+    match_percentage: result.match_percentage,
+    reasoning: result.reasoning,
+    indicators: result.indicators,
+    key_benefits: result.product.key_benefits,
+    available_riders: result.product.available_riders || [],
+    compliance_flags: result.compliance_flags,
+    ...overrides
+  };
 }
 
 export function getRecommendations(matchingInputJson, products, pivotRules) {
@@ -189,29 +239,47 @@ export function getRecommendations(matchingInputJson, products, pivotRules) {
     max_recommendations: 4
   };
 
-  const recommendations = products
+  let recommendations = products
     .filter((product) => passesHardFilters(matchingInputJson, product))
     .map((product) => buildRecommendation(matchingInputJson, product, pivotRules))
     .filter((result) => result.match_score > 0)
     .sort((a, b) => b.match_score - a.match_score || a.product.product_name.localeCompare(b.product.product_name))
     .slice(0, readiness.max_recommendations)
-    .map((result, index) => ({
-      rank: index + 1,
-      product_id: result.product.product_id,
-      product_name: result.product.product_name,
-      product_type: result.product.product_type,
-      tagline: result.product.tagline,
-      match_score: result.match_score,
-      reasoning: result.reasoning,
-      key_benefits: result.product.key_benefits,
-      available_riders: result.product.available_riders || [],
-      compliance_flags: result.compliance_flags
-    }));
+    .map((result, index) => mapRecommendationResult(result, index));
+
+  const ineligible_products = products
+    .map((product) => ({
+      product_id: product.product_id,
+      product_name: product.product_name,
+      product_type: product.product_type,
+      tagline: product.tagline,
+      reasons: getIneligibilityReasons(matchingInputJson, product)
+    }))
+    .filter((product) => product.reasons.length > 0);
+
+  if (recommendations.length === 0) {
+    const fallbackProduct = products.find((product) => product.product_id === "paa-plus");
+    if (fallbackProduct) {
+      const fallback = buildRecommendation(matchingInputJson, fallbackProduct, pivotRules);
+      recommendations = [
+        mapRecommendationResult(fallback, 0, {
+          is_fallback: true,
+          match_percentage: 50,
+          indicators: [
+            makeIndicator("fallback", "Default option", "neutral"),
+            makeIndicator("advisor_review", "Needs advisor review", "warning")
+          ],
+          reasoning: ["PAA Plus is shown as the default product for advisor review because no product passed all eligibility filters."]
+        })
+      ];
+    }
+  }
 
   return {
     disclaimer: DISCLAIMER,
     ui_tone: readiness.ui_tone,
     recommendations,
+    ineligible_products,
     max_recommendations_shown: readiness.max_recommendations
   };
 }

@@ -23,7 +23,8 @@ describe("matching engine", () => {
       rank: 1,
       product_id: "paa-plus",
       product_name: "PAA Plus",
-      match_score: 9.5
+      match_score: 9.5,
+      match_percentage: 95
     });
     expect(results.recommendations.map((item) => item.product_id)).toEqual(["paa-plus", "elite-15", "pru-pep"]);
     expect(results.recommendations.find((item) => item.product_id === "prumillion-protect")).toBeUndefined();
@@ -68,8 +69,13 @@ describe("matching engine", () => {
 
     const results = getRecommendations(olderInput, products, pivotRules);
 
-    expect(results.recommendations.find((item) => item.product_id === "paa-plus")).toBeUndefined();
+    expect(results.recommendations.find((item) => item.product_id === "paa-plus")).toMatchObject({
+      product_id: "paa-plus",
+      is_fallback: true,
+      match_percentage: 50
+    });
     expect(results.recommendations.find((item) => item.product_id === "prumillion-protect")).toBeUndefined();
+    expect(results.ineligible_products.find((item) => item.product_id === "paa-plus")?.reasons[0]).toContain("outside the allowed age range");
   });
 
   it("does not recommend products whose premium estimate exceeds stated budget comfort", () => {
@@ -85,7 +91,12 @@ describe("matching engine", () => {
     const results = getRecommendations(lowBudgetFamilyInput, products, pivotRules);
 
     expect(results.recommendations.find((item) => item.product_id === "prumillion-protect")).toBeUndefined();
-    expect(results.recommendations.find((item) => item.product_id === "paa-plus")).toBeUndefined();
+    expect(results.recommendations.find((item) => item.product_id === "paa-plus")).toMatchObject({
+      product_id: "paa-plus",
+      is_fallback: true,
+      match_percentage: 50
+    });
+    expect(results.ineligible_products.find((item) => item.product_id === "paa-plus")?.reasons[0]).toContain("above the client's stated budget");
   });
 
   it("surfaces attorney referral compliance for PRULifetime Income matches", () => {

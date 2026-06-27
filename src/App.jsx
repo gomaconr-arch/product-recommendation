@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   BadgeCheck,
+  BarChart3,
   CheckCircle2,
   Clipboard,
   ClipboardList,
@@ -54,7 +55,7 @@ import {
 } from "./lib/storage.js";
 
 const PROPOSAL_DISCLAIMER =
-  "This proposal is based on the information you provided and is subject to final underwriting and review.";
+  "This proposal is based on the information you provided. Final approval depends on the company's health and document check (underwriting).";
 const APP_VERSION = packageInfo.version;
 
 const WORKFLOW_STEPS = [
@@ -259,7 +260,73 @@ function getThreatReasoning(threats = []) {
 }
 
 function getProposalReasoning(recommendation, threats = []) {
-  return [...new Set([...recommendation.reasoning, ...getThreatReasoning(threats)])];
+  return [...new Set([...(recommendation.reasoning || []).slice(0, 2), ...getThreatReasoning(threats).slice(0, 1)])];
+}
+
+function getMatchPercentage(recommendation) {
+  return recommendation?.match_percentage ?? Math.max(0, Math.min(100, Math.round((recommendation?.match_score || 0) * 10)));
+}
+
+function getBudgetLabelFromLead(lead) {
+  return lead.raw_assessment?.quoteData?.budget || "Budget not provided";
+}
+
+function getLeadRecommendationSummary(lead) {
+  try {
+    const { results } = getLeadMatchData(lead);
+    const primary = results.recommendations[0];
+    const remaining = Math.max(0, results.recommendations.length - 1);
+    return {
+      productName: primary?.product_name || "PAA Plus",
+      otherCount: remaining,
+      isFallback: Boolean(primary?.is_fallback)
+    };
+  } catch {
+    return { productName: "For review", otherCount: 0, isFallback: false };
+  }
+}
+
+function IndicatorPill({ indicator }) {
+  const toneClass = indicator.tone === "warning"
+    ? "border-gold/60 bg-gold/10 text-ink"
+    : indicator.tone === "neutral"
+      ? "border-line bg-mist text-slate-600"
+      : "border-forest/20 bg-forest/10 text-forest";
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${toneClass}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {indicator.label}
+    </span>
+  );
+}
+
+function MatchDiagram({ percentage }) {
+  const bounded = Math.max(0, Math.min(100, percentage));
+  const segments = [
+    { label: "Profile", active: bounded >= 25 },
+    { label: "Goal", active: bounded >= 50 },
+    { label: "Budget", active: bounded >= 70 },
+    { label: "Review", active: bounded >= 85 }
+  ];
+  return (
+    <div className="rounded-md border border-line bg-mist p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="text-forest" size={18} />
+          <p className="text-sm font-semibold text-ink">Compatibility</p>
+        </div>
+        <p className="text-lg font-semibold text-forest">{bounded}% likely</p>
+      </div>
+      <div className="mt-3 grid grid-cols-4 gap-2">
+        {segments.map((segment) => (
+          <div key={segment.label} className={`h-2 rounded-full ${segment.active ? "bg-forest" : "bg-white"}`} />
+        ))}
+      </div>
+      <div className="mt-2 grid grid-cols-4 gap-2 text-[11px] font-medium text-slate-500">
+        {segments.map((segment) => <span key={segment.label}>{segment.label}</span>)}
+      </div>
+    </div>
+  );
 }
 
 function latestProposalForLead(proposals, leadId) {
@@ -409,7 +476,7 @@ function AppShell({ children, currentUser, onNavigate, onSignOut }) {
   return (
     <main className="min-h-screen bg-mist">
       <header className="border-b border-line bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-6">
           <button type="button" onClick={() => onNavigate(makeRoute("dashboard"))} className="flex items-center gap-3 text-left">
             <span className="flex h-10 w-10 items-center justify-center rounded-md bg-forest text-white">
               <ShieldCheck size={20} />
@@ -462,7 +529,7 @@ function AppShell({ children, currentUser, onNavigate, onSignOut }) {
           </div>
         </div>
       </header>
-      <div className="mx-auto max-w-6xl px-5 py-6">{children}</div>
+      <div className="mx-auto w-full max-w-[1600px] px-4 py-6 lg:px-6">{children}</div>
     </main>
   );
 }
@@ -734,6 +801,7 @@ function Dashboard({ currentUser, onNavigate, refreshKey }) {
                   {columnContacts.map(({ lead, proposal }) => {
                     const product = proposal ? getProduct(proposal.selected_product_id) : null;
                     const persona = lead.raw_assessment.scoreData?.persona?.title || "Unassigned";
+                    const recommendationSummary = getLeadRecommendationSummary(lead);
                     return (
                       <button
                         key={lead.lead_id}
@@ -743,7 +811,16 @@ function Dashboard({ currentUser, onNavigate, refreshKey }) {
                       >
                         <p className="font-semibold text-ink">{lead.name}</p>
                         <p className="mt-1 text-xs text-slate-500">{persona}</p>
-                        <p className="mt-2 text-xs font-medium text-slate-600">{product?.product_name || "Options pending"}</p>
+                        <div className="mt-3 space-y-1 text-xs text-slate-600">
+                          <p><span className="font-semibold text-ink">Age:</span> {lead.age || "For review"}</p>
+                          <p><span className="font-semibold text-ink">Budget:</span> {getBudgetLabelFromLead(lead)}</p>
+                          <p>
+                            <span className="font-semibold text-ink">Top match:</span>{" "}
+                            {product?.product_name || recommendationSummary.productName}
+                            {recommendationSummary.isFallback ? " (default)" : ""}
+                          </p>
+                          <p>{recommendationSummary.otherCount} other matching product{recommendationSummary.otherCount === 1 ? "" : "s"}</p>
+                        </div>
                         {proposal?.viewed_at && <p className="mt-2 text-xs text-slate-500">Viewed {formatRelative(proposal.viewed_at)}</p>}
                         {proposal?.booking_sent_at && <p className="mt-2 text-xs text-slate-500">Booking sent {formatRelative(proposal.booking_sent_at)}</p>}
                       </button>
@@ -761,7 +838,7 @@ function Dashboard({ currentUser, onNavigate, refreshKey }) {
 }
 
 function IntakeScreen({ currentUser, onNavigate, onDataChanged }) {
-  const [jsonText, setJsonText] = useState(JSON.stringify(sampleRawAssessment, null, 2));
+  const [jsonText, setJsonText] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -813,7 +890,8 @@ function IntakeScreen({ currentUser, onNavigate, onDataChanged }) {
           id="assessment-json"
           value={jsonText}
           onChange={(event) => setJsonText(event.target.value)}
-          className="mt-3 min-h-[420px] w-full resize-y rounded-md border border-line bg-mist p-4 font-mono text-sm leading-6 text-ink outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20"
+          placeholder={JSON.stringify(sampleRawAssessment, null, 2)}
+          className="mt-3 min-h-[420px] w-full resize-y rounded-md border border-line bg-mist p-4 font-mono text-sm leading-6 text-ink outline-none placeholder:text-slate-400 focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20"
           spellCheck={false}
         />
         {error && (
@@ -974,6 +1052,7 @@ function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }
   const raw = lead.raw_assessment;
   const threats = raw.scoreData?.pressurePoints || raw.scoreData?.threats || [];
   const selectedRecommendation = results.recommendations.find((recommendation) => recommendation.product_id === selectedProductId);
+  const hasOnlyFallback = results.recommendations.length > 0 && results.recommendations.every((recommendation) => recommendation.is_fallback);
 
   function toggleRider(riderType) {
     setSelectedRiders((current) => {
@@ -996,6 +1075,7 @@ function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }
       selected_riders: selectedRiders,
       coverage_snapshot: getCoverageSnapshot(selectedProduct, selectedRiders),
       match_reasoning_snapshot: getProposalReasoning(selectedRecommendation, threats),
+      match_percentage_snapshot: getMatchPercentage(selectedRecommendation),
       status: "draft",
       created_at: new Date().toISOString(),
       sent_at: null,
@@ -1038,14 +1118,14 @@ function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_330px]">
         <div className="space-y-4">
-          {results.recommendations.length === 0 && (
+          {hasOnlyFallback && (
             <div className="rounded-lg border border-gold/60 bg-white p-6 shadow-sm">
               <div className="flex gap-3">
                 <AlertTriangle className="mt-0.5 shrink-0 text-gold" size={22} />
                 <div>
-                  <h2 className="text-lg font-semibold text-ink">No eligible products within stated budget</h2>
+                  <h2 className="text-lg font-semibold text-ink">No eligible products found</h2>
                   <p className="mt-2 text-sm leading-6 text-slate-600">
-                    The current product set does not include an option that fits this client's budget comfort. Review the budget with the client before generating a proposal.
+                    PAA Plus is shown as the default product for advisor review. The blocked product cards below explain why the other options should be treated as disclaimers, not recommendations.
                   </p>
                 </div>
               </div>
@@ -1059,7 +1139,10 @@ function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }
               <article key={recommendation.product_id} className={`rounded-lg border bg-white p-5 shadow-sm ${isSelected ? "border-forest ring-2 ring-forest/20" : "border-line"}`}>
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <p className="text-sm font-medium text-slate-500">{recommendation.product_type.replaceAll("_", " ")}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium text-slate-500">{recommendation.product_type.replaceAll("_", " ")}</p>
+                      {recommendation.is_fallback && <span className="rounded-full border border-gold/60 bg-gold/10 px-2 py-1 text-xs font-semibold text-ink">Default for review</span>}
+                    </div>
                     <h2 className="mt-2 text-xl font-semibold text-ink">{recommendation.product_name}</h2>
                     <p className="mt-1 text-slate-600">{recommendation.tagline}</p>
                     {product && (
@@ -1074,22 +1157,22 @@ function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }
                     )}
                   </div>
                   <div className="rounded-md border border-line bg-mist px-3 py-2 text-right">
-                    <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Match score</p>
-                    <p className="text-xl font-semibold text-forest">{recommendation.match_score}</p>
+                    <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Likely match</p>
+                    <p className="text-xl font-semibold text-forest">{getMatchPercentage(recommendation)}%</p>
                   </div>
                 </div>
 
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   <div>
-                    <p className="mb-2 text-sm font-semibold text-ink">Reasoning</p>
-                    <ul className="space-y-2">
-                      {getProposalReasoning(recommendation, threats).map((reason) => (
-                        <li key={reason} className="flex gap-2 text-sm leading-6 text-slate-700">
-                          <BadgeCheck className="mt-1 shrink-0 text-forest" size={16} />
-                          <span>{reason}</span>
-                        </li>
+                    <p className="mb-2 text-sm font-semibold text-ink">Match indicators</p>
+                    <div className="flex flex-wrap gap-2">
+                      {(recommendation.indicators || []).map((indicator) => (
+                        <IndicatorPill key={indicator.id} indicator={indicator} />
                       ))}
-                    </ul>
+                    </div>
+                    <div className="mt-4">
+                      <MatchDiagram percentage={getMatchPercentage(recommendation)} />
+                    </div>
                   </div>
                   <div>
                     <p className="mb-2 text-sm font-semibold text-ink">Riders available</p>
@@ -1157,6 +1240,28 @@ function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }
               </article>
             );
           })}
+          {results.ineligible_products?.length > 0 && (
+            <section className="rounded-lg border border-line bg-white p-5 shadow-sm">
+              <h2 className="text-lg font-semibold text-ink">Products not eligible for this assessment</h2>
+              <p className="mt-1 text-sm text-slate-500">These are shown as disclaimers so the advisor can review the limits before discussing options.</p>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {results.ineligible_products.map((product) => (
+                  <article key={product.product_id} className="rounded-md border border-line bg-mist p-4">
+                    <p className="text-sm font-medium text-slate-500">{product.product_type}</p>
+                    <h3 className="mt-1 font-semibold text-ink">{product.product_name}</h3>
+                    <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
+                      {product.reasons.map((reason) => (
+                        <li key={reason} className="flex gap-2">
+                          <AlertTriangle className="mt-1 shrink-0 text-gold" size={15} />
+                          <span>{reason}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
           <div className="sticky bottom-0 flex justify-end border-t border-line bg-mist/95 py-4">
             <button
               type="button"
@@ -1198,6 +1303,7 @@ function ProposalDocument({ lead, proposal, clientView = false }) {
   if (!product) return null;
 
   const coverage = getProposalCoverageSnapshot(product, proposal);
+  const proposalMatchPercentage = proposal.match_percentage_snapshot ?? 75;
 
   return (
     <article className="rounded-lg border border-line bg-white p-6 shadow-sm">
@@ -1206,22 +1312,31 @@ function ProposalDocument({ lead, proposal, clientView = false }) {
       <p className="mt-3 text-lg text-slate-600">
         {lead.name}, {raw.scoreData?.persona?.subtitle || "this proposal is prepared from the assessment details you provided."}
       </p>
+      {clientView && (
+        <div className="mt-5 rounded-md border border-forest/20 bg-forest/5 p-4 text-sm leading-6 text-slate-700">
+          This is a zero-payment, no-commitment acknowledgment. By reviewing or confirming this page, you are only saying that you are interested in discussing the proposal further with your advisor.
+        </div>
+      )}
 
       <section className="mt-6 rounded-lg border border-line bg-mist p-5">
         <p className="text-sm font-semibold text-slate-500">Selected solution</p>
         <h2 className="mt-2 text-2xl font-semibold text-ink">{product.product_name}</h2>
         <p className="mt-1 text-slate-600">{product.tagline}</p>
+        <div className="mt-4">
+          <MatchDiagram percentage={proposalMatchPercentage} />
+        </div>
       </section>
 
       <section className="mt-6 rounded-lg border border-line bg-white p-5">
-        <h3 className="text-lg font-semibold text-ink">Coverage and Premium Summary</h3>
+        <h3 className="text-lg font-semibold text-ink">Protection and Payment Summary</h3>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div className="rounded-md border border-line bg-mist p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">{coverage.base_sum_assured_label}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Money your family may receive if a covered event happens (coverage)</p>
             <p className="mt-2 text-2xl font-semibold text-forest">{formatCurrency(coverage.base_sum_assured, product.payment_structure.currency)}</p>
+            <p className="mt-1 text-xs text-slate-500">{coverage.base_sum_assured_label}</p>
           </div>
           <div className="rounded-md border border-line bg-mist p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Minimum annual premium</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Estimated yearly payment to keep the plan active (premium)</p>
             <p className="mt-2 text-2xl font-semibold text-forest">{formatCurrency(coverage.annual_premium, product.payment_structure.currency)}</p>
           </div>
         </div>
@@ -1276,7 +1391,7 @@ function ProposalDocument({ lead, proposal, clientView = false }) {
 
       <div className="mt-6 rounded-md border border-gold/60 bg-gold/10 p-4 text-sm leading-6 text-slate-700">
         <span className="font-semibold text-ink">Important: </span>
-        {PROPOSAL_DISCLAIMER} {clientView && "This confirms your interest - it is not a signed policy contract."}
+        {PROPOSAL_DISCLAIMER} {clientView && "No payment is collected here, and this is not a signed policy contract."}
       </div>
     </article>
   );
@@ -1319,6 +1434,14 @@ function ProposalPreviewScreen({ currentUser, proposalId, onNavigate, onDataChan
           <p className="mt-1 text-sm text-slate-500">Status: {proposal.status}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onNavigate(makeRoute("options", { leadId: lead.lead_id }))}
+            className="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-white px-4 text-sm font-semibold text-ink hover:border-forest"
+          >
+            <ReceiptText size={16} />
+            Review or Change Option
+          </button>
           <button
             type="button"
             onClick={generateLink}
@@ -1451,15 +1574,15 @@ function PublicProposalScreen({ token, onDataChanged }) {
             <div className="flex gap-3">
               <CheckCircle2 className="mt-0.5 shrink-0 text-forest" size={22} />
               <div>
-                <h2 className="font-semibold text-ink">Proposal Accepted on {formatDate(proposal.accepted_at)}</h2>
-                <p className="mt-1 text-sm text-slate-600">Thanks, {lead.name}! Your agent has been notified and will follow up with you on the next steps.</p>
+                <h2 className="font-semibold text-ink">Interest confirmed on {formatDate(proposal.accepted_at)}</h2>
+                <p className="mt-1 text-sm text-slate-600">Thanks, {lead.name}! Your agent has been notified and will follow up to discuss the proposal. This did not create a paid or binding contract.</p>
               </div>
             </div>
           ) : (
             <>
               <label className="flex items-start gap-3 text-sm leading-6 text-slate-700">
                 <input type="checkbox" checked={checked} onChange={(event) => setChecked(event.target.checked)} className="mt-1 h-4 w-4 accent-forest" />
-                <span>I have reviewed this proposal and confirm I'd like to proceed. This confirms my interest - it is not a signed policy contract.</span>
+                <span>I have reviewed this proposal and I am interested in discussing it further. I understand this has zero payment, no commitment, and is not a signed insurance policy contract.</span>
               </label>
               <div className="mt-4 flex justify-end">
                 <button
@@ -1469,7 +1592,7 @@ function PublicProposalScreen({ token, onDataChanged }) {
                   className="inline-flex h-11 items-center gap-2 rounded-md bg-forest px-4 text-sm font-semibold text-white hover:bg-forest/90 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   <CheckCircle2 size={17} />
-                  Confirm
+                  Confirm Interest
                 </button>
               </div>
             </>
