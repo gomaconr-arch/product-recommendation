@@ -102,6 +102,11 @@ export async function getLeadById(db, leadId) {
 export async function saveLead(request, db) {
   const user = await requireUser(request, db);
   const lead = normalizeLead(await request.json());
+  if (user.role === "agent") {
+    lead.agent_id = lead.agent_id || user.agent_id;
+    lead.agent_slug = lead.agent_slug || user.agent_slug || user.agent_id;
+    lead.agent_name = lead.agent_name || user.name || user.agent_name;
+  }
   if (!lead.lead_id) throw new Error("Lead ID is required.");
   if (!canAccessLead(user, lead)) throw new Error("Lead access is denied.");
 

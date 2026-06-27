@@ -16,6 +16,7 @@ import {
   ReceiptText,
   Radio,
   Save,
+  Search,
   Send,
   ShieldCheck,
   Trash2,
@@ -139,6 +140,11 @@ const sampleRawAssessment = {
 function formatDate(value) {
   if (!value) return "Not yet";
   return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function formatDateOnly(value) {
+  if (!value) return "Not yet";
+  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(new Date(value));
 }
 
 function formatRelative(value) {
@@ -271,6 +277,15 @@ function getBudgetLabelFromLead(lead) {
   return lead.raw_assessment?.quoteData?.budget || "Budget not provided";
 }
 
+function getBudgetIdFromLead(lead) {
+  const rawBudget = String(getBudgetLabelFromLead(lead)).toLowerCase();
+  if (rawBudget.includes("below") || rawBudget.includes("under") || rawBudget.includes("<") || rawBudget.includes("1000")) return "<1500";
+  if (rawBudget.includes("1500") || rawBudget.includes("1,500")) return "1500-3000";
+  if (rawBudget.includes("3000") || rawBudget.includes("3,000")) return "3000-5000";
+  if (rawBudget.includes("5000") || rawBudget.includes("5,000")) return "5000+";
+  return rawBudget.includes("unsure") || rawBudget.includes("not sure") ? "unsure" : "";
+}
+
 function getLeadRecommendationSummary(lead) {
   try {
     const { results } = getLeadMatchData(lead);
@@ -284,6 +299,39 @@ function getLeadRecommendationSummary(lead) {
   } catch {
     return { productName: "For review", otherCount: 0, isFallback: false };
   }
+}
+
+function getLeadAgentName(lead) {
+  return lead.agent_name || lead.raw_assessment?.agent?.agentName || lead.raw_assessment?.agentInfo?.agentName || "Unassigned agent";
+}
+
+function getLeadCreatedDateValue(lead) {
+  const timestamp = new Date(lead.created_at).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+const PIPELINE_STATUS_LABELS = Object.fromEntries(PIPELINE_COLUMNS.map((column) => [column.id, column.label]));
+
+function filterContacts(contacts, filters, includeAgentFilter = false) {
+  const fromDate = filters.dateFrom ? new Date(`${filters.dateFrom}T00:00:00`).getTime() : null;
+  const toDate = filters.dateTo ? new Date(`${filters.dateTo}T23:59:59`).getTime() : null;
+  const minAge = filters.minAge === "" ? null : Number(filters.minAge);
+  const maxAge = filters.maxAge === "" ? null : Number(filters.maxAge);
+
+  return contacts.filter(({ lead, stage, recommendationSummary }) => {
+    const createdAt = getLeadCreatedDateValue(lead);
+    const age = Number(lead.age);
+
+    if (includeAgentFilter && filters.agentName && getLeadAgentName(lead) !== filters.agentName) return false;
+    if (filters.product && recommendationSummary.productName !== filters.product) return false;
+    if (filters.budget && getBudgetIdFromLead(lead) !== filters.budget) return false;
+    if (filters.status && stage !== filters.status) return false;
+    if (fromDate && createdAt < fromDate) return false;
+    if (toDate && createdAt > toDate) return false;
+    if (minAge != null && !Number.isNaN(minAge) && (Number.isNaN(age) || age < minAge)) return false;
+    if (maxAge != null && !Number.isNaN(maxAge) && (Number.isNaN(age) || age > maxAge)) return false;
+    return true;
+  });
 }
 
 function IndicatorPill({ indicator }) {
@@ -476,7 +524,7 @@ function AppShell({ children, currentUser, onNavigate, onSignOut }) {
   return (
     <main className="min-h-screen bg-mist">
       <header className="border-b border-line bg-white">
-        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+        <div className="flex w-full flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-6">
           <button type="button" onClick={() => onNavigate(makeRoute("dashboard"))} className="flex items-center gap-3 text-left">
             <span className="flex h-10 w-10 items-center justify-center rounded-md bg-forest text-white">
               <ShieldCheck size={20} />
@@ -529,7 +577,7 @@ function AppShell({ children, currentUser, onNavigate, onSignOut }) {
           </div>
         </div>
       </header>
-      <div className="mx-auto w-full max-w-[1600px] px-4 py-6 lg:px-6">{children}</div>
+      <div className="w-full px-4 py-6 lg:px-6">{children}</div>
     </main>
   );
 }
@@ -551,6 +599,7 @@ function AgentManagementScreen({ currentUser, onNavigate }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
   const seededAgentIds = useMemo(() => new Set(SEEDED_AGENTS.map((agent) => agent.user_id)), []);
 
   useEffect(() => {
@@ -637,6 +686,14 @@ function AgentManagementScreen({ currentUser, onNavigate }) {
     if (form.user_id === agent.user_id) resetForm();
   }
 
+  const filteredAgents = agents.filter((agent) => {
+    const query = search.trim().toLowerCase();
+    if (!query) return true;
+    return [agent.name, agent.email, agent.agent_slug, agent.assessment_url]
+      .filter(Boolean)
+      .some((value) => value.toLowerCase().includes(query));
+  });
+
   return (
     <section>
       <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -657,45 +714,87 @@ function AgentManagementScreen({ currentUser, onNavigate }) {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <section className="rounded-lg border border-line bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-ink">Agents</h2>
-          <div className="mt-4 space-y-3">
-            {loading && <p className="rounded-md border border-dashed border-line p-3 text-sm text-slate-500">Loading agents</p>}
-            {agents.map((agent) => {
-              const isSeeded = seededAgentIds.has(agent.user_id);
-              return (
-                <article key={agent.user_id} className="rounded-md border border-line bg-mist p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-semibold text-ink">{agent.name}</h3>
-                        {isSeeded && <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-500">Seeded</span>}
-                      </div>
-                      <p className="mt-1 text-sm text-slate-600">{agent.email}</p>
-                      <p className="mt-2 break-all text-xs text-slate-500">{agent.assessment_url}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => editAgent(agent)}
-                        className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink hover:border-forest"
-                      >
-                        Edit
-                      </button>
-                      {!isSeeded && (
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(agent)}
-                          className="inline-flex h-9 items-center justify-center rounded-md border border-coral/30 bg-white px-3 text-sm font-semibold text-coral hover:bg-coral/5"
-                          aria-label={`Delete ${agent.name}`}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-lg font-semibold text-ink">Agents</h2>
+            <label className="relative block sm:w-80">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search agents"
+                className="h-10 w-full rounded-md border border-line bg-mist pl-9 pr-3 text-sm outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20"
+              />
+            </label>
+          </div>
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full divide-y divide-line text-sm">
+              <thead className="bg-mist text-left text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                <tr>
+                  <th className="px-3 py-3">Agent</th>
+                  <th className="px-3 py-3">Email</th>
+                  <th className="px-3 py-3">Slug</th>
+                  <th className="px-3 py-3">Assessment URL</th>
+                  <th className="px-3 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {loading && (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-5 text-center text-slate-500">Loading agents</td>
+                  </tr>
+                )}
+                {!loading && filteredAgents.map((agent) => {
+                  const isSeeded = seededAgentIds.has(agent.user_id);
+                  return (
+                    <tr key={agent.user_id} className="align-top hover:bg-mist">
+                      <td className="px-3 py-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-ink">{agent.name}</span>
+                          {isSeeded && <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-500">Seeded</span>}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-slate-600">{agent.email}</td>
+                      <td className="px-3 py-3 text-slate-600">{agent.agent_slug}</td>
+                      <td className="max-w-md break-all px-3 py-3 text-xs text-slate-500">{agent.assessment_url}</td>
+                      <td className="px-3 py-3">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onNavigate(makeRoute("agent-detail", { userId: agent.user_id }))}
+                            className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink hover:border-forest"
+                          >
+                            View
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => editAgent(agent)}
+                            className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink hover:border-forest"
+                          >
+                            Edit
+                          </button>
+                          {!isSeeded && (
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(agent)}
+                              className="inline-flex h-9 items-center justify-center rounded-md border border-coral/30 bg-white px-3 text-sm font-semibold text-coral hover:bg-coral/5"
+                              aria-label={`Delete ${agent.name}`}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!loading && filteredAgents.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-5 text-center text-slate-500">No agents match the search.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </section>
 
@@ -759,18 +858,261 @@ function AgentManagementScreen({ currentUser, onNavigate }) {
   );
 }
 
+function AgentDetailScreen({ currentUser, userId, onNavigate, refreshKey, onDataChanged }) {
+  const [agents, setAgents] = useState([]);
+  const [activeTab, setActiveTab] = useState("leads");
+  const [form, setForm] = useState(createBlankAgentForm);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const seededAgentIds = useMemo(() => new Set(SEEDED_AGENTS.map((agent) => agent.user_id)), []);
+  const leads = useMemo(() => getLeads(), [refreshKey]);
+  const proposals = useMemo(() => getProposals(), [refreshKey]);
+
+  useEffect(() => {
+    let active = true;
+    fetchAgentsRemote()
+      .then((nextAgents) => {
+        if (!active) return;
+        setAgents(nextAgents);
+        const agent = nextAgents.find((item) => item.user_id === userId);
+        if (agent) {
+          setForm({
+            user_id: agent.user_id,
+            name: agent.name,
+            email: agent.email,
+            password: agent.password || "",
+            agent_slug: agent.agent_slug,
+            assessment_url: agent.assessment_url
+          });
+        }
+      })
+      .catch((loadError) => {
+        if (active) setError(loadError instanceof Error ? loadError.message : "Unable to load agent.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [userId]);
+
+  if (currentUser.role !== "superadmin") {
+    return <MissingState title="Agent detail is only available to superadmin users" onNavigate={onNavigate} />;
+  }
+
+  const agent = agents.find((item) => item.user_id === userId);
+  const isSeeded = agent ? seededAgentIds.has(agent.user_id) : false;
+  const agentLeads = agent
+    ? leads
+      .filter((lead) => lead.agent_id === agent.agent_id || lead.agent_slug === agent.agent_slug || getLeadAgentName(lead) === agent.name)
+      .map((lead) => {
+        const proposal = latestProposalForLead(proposals, lead.lead_id);
+        return {
+          lead,
+          proposal,
+          stage: getPipelineStage(lead, proposal),
+          recommendationSummary: getLeadRecommendationSummary(lead)
+        };
+      })
+    : [];
+
+  function updateForm(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+    setError("");
+    setMessage("");
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    try {
+      const saved = await saveAgentRemote(form);
+      const nextAgents = await fetchAgentsRemote();
+      setAgents(nextAgents);
+      setForm({
+        user_id: saved.user_id,
+        name: saved.name,
+        email: saved.email,
+        password: form.password,
+        agent_slug: saved.agent_slug,
+        assessment_url: saved.assessment_url
+      });
+      setMessage(`${saved.name} saved.`);
+      setError("");
+      onDataChanged();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to save agent.");
+      setMessage("");
+    }
+  }
+
+  if (loading) {
+    return (
+      <section className="rounded-lg border border-line bg-white p-8 text-center shadow-sm">
+        <h1 className="text-xl font-semibold text-ink">Loading agent</h1>
+      </section>
+    );
+  }
+
+  if (!agent) {
+    return <MissingState title="Agent not found" onNavigate={onNavigate} />;
+  }
+
+  return (
+    <section>
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.08em] text-forest">Agent</p>
+          <h1 className="mt-2 text-2xl font-semibold text-ink">{agent.name}</h1>
+          <p className="text-sm text-slate-500">{agent.email}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onNavigate(makeRoute("agents"))}
+          className="inline-flex h-10 items-center rounded-md border border-line bg-white px-4 text-sm font-semibold text-ink hover:border-forest"
+        >
+          Back to Agents
+        </button>
+      </div>
+
+      <div className="mb-5 flex gap-2 border-b border-line">
+        {[
+          { id: "leads", label: "Leads" },
+          { id: "settings", label: "Settings" }
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={`border-b-2 px-4 py-3 text-sm font-semibold ${activeTab === tab.id ? "border-forest text-forest" : "border-transparent text-slate-500 hover:text-ink"}`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "leads" ? (
+        <section className="rounded-lg border border-line bg-white p-5 shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-line text-sm">
+              <thead className="bg-mist text-left text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                <tr>
+                  <th className="px-3 py-3">Date</th>
+                  <th className="px-3 py-3">Lead</th>
+                  <th className="px-3 py-3">Age</th>
+                  <th className="px-3 py-3">Budget</th>
+                  <th className="px-3 py-3">Highest match</th>
+                  <th className="px-3 py-3">Status</th>
+                  <th className="px-3 py-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {agentLeads.map(({ lead, proposal, stage, recommendationSummary }) => (
+                  <tr key={lead.lead_id} className="hover:bg-mist">
+                    <td className="px-3 py-3 text-slate-600">{formatDateOnly(lead.created_at)}</td>
+                    <td className="px-3 py-3">
+                      <p className="font-semibold text-ink">{lead.name}</p>
+                      <p className="text-xs text-slate-500">{lead.email || lead.phone || "No contact info"}</p>
+                    </td>
+                    <td className="px-3 py-3 text-slate-600">{lead.age || "For review"}</td>
+                    <td className="px-3 py-3 text-slate-600">{getBudgetLabelFromLead(lead)}</td>
+                    <td className="px-3 py-3 text-slate-600">{recommendationSummary.productName}</td>
+                    <td className="px-3 py-3">
+                      <span className="rounded-full border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-600">
+                        {PIPELINE_STATUS_LABELS[stage]}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => onNavigate(routeForContact(lead, proposal))}
+                        className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink hover:border-forest"
+                      >
+                        Open
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {agentLeads.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-5 text-center text-slate-500">No leads for this agent.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : (
+        <form onSubmit={handleSubmit} className="max-w-3xl rounded-lg border border-line bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-ink">Agent Settings</h2>
+          {isSeeded && <p className="mt-2 rounded-md border border-line bg-mist p-3 text-sm text-slate-600">This is a seeded agent. You can update details, but it cannot be deleted.</p>}
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <label className="block text-sm font-semibold text-ink">
+              Agent name
+              <input type="text" value={form.name} onChange={(event) => updateForm("name", event.target.value)} className="mt-2 h-11 w-full rounded-md border border-line bg-mist px-3 text-sm outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20" />
+            </label>
+            <label className="block text-sm font-semibold text-ink">
+              Email
+              <input type="email" value={form.email} onChange={(event) => updateForm("email", event.target.value)} className="mt-2 h-11 w-full rounded-md border border-line bg-mist px-3 text-sm outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20" />
+            </label>
+            <label className="block text-sm font-semibold text-ink">
+              New password
+              <input type="text" value={form.password} onChange={(event) => updateForm("password", event.target.value)} placeholder="Leave blank to keep current password" className="mt-2 h-11 w-full rounded-md border border-line bg-mist px-3 text-sm outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20" />
+            </label>
+            <label className="block text-sm font-semibold text-ink">
+              Agent slug
+              <input type="text" value={form.agent_slug} onChange={(event) => updateForm("agent_slug", event.target.value)} className="mt-2 h-11 w-full rounded-md border border-line bg-mist px-3 text-sm outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20" />
+            </label>
+          </div>
+          <label className="mt-4 block text-sm font-semibold text-ink">
+            Assessment URL
+            <input type="url" value={form.assessment_url} onChange={(event) => updateForm("assessment_url", event.target.value)} className="mt-2 h-11 w-full rounded-md border border-line bg-mist px-3 text-sm outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20" />
+          </label>
+          {error && <p className="mt-4 rounded-md border border-coral/30 bg-coral/5 p-3 text-sm font-medium text-coral">{error}</p>}
+          {message && <p className="mt-4 rounded-md border border-forest/20 bg-forest/5 p-3 text-sm font-medium text-forest">{message}</p>}
+          <button type="submit" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-md bg-forest px-4 text-sm font-semibold text-white hover:bg-forest/90">
+            <Save size={17} />
+            Save Settings
+          </button>
+        </form>
+      )}
+    </section>
+  );
+}
+
 function Dashboard({ currentUser, onNavigate, refreshKey }) {
+  const [filters, setFilters] = useState({
+    agentName: "",
+    product: "",
+    dateFrom: "",
+    dateTo: "",
+    budget: "",
+    minAge: "",
+    maxAge: "",
+    status: ""
+  });
   const leads = useMemo(() => getLeads().filter((lead) => canAccessLead(currentUser, lead)), [currentUser, refreshKey]);
   const proposals = useMemo(() => getProposals(), [refreshKey]);
+  const isSuperadmin = currentUser.role === "superadmin";
 
   const contacts = leads.map((lead) => {
     const proposal = latestProposalForLead(proposals, lead.lead_id);
+    const recommendationSummary = getLeadRecommendationSummary(lead);
     return {
       lead,
       proposal,
-      stage: getPipelineStage(lead, proposal)
+      stage: getPipelineStage(lead, proposal),
+      recommendationSummary
     };
   });
+  const filteredContacts = filterContacts(contacts, filters, isSuperadmin);
+  const agentNames = [...new Set(contacts.map((contact) => getLeadAgentName(contact.lead)).filter(Boolean))].sort();
+  const productNames = [...new Set(contacts.map((contact) => contact.recommendationSummary.productName).filter(Boolean))].sort();
+
+  function updateFilter(field, value) {
+    setFilters((current) => ({ ...current, [field]: value }));
+  }
 
   return (
     <section>
@@ -788,50 +1130,115 @@ function Dashboard({ currentUser, onNavigate, refreshKey }) {
           <p className="mt-2 text-sm text-slate-500">Paste a raw assessment JSON export to start the proposal workflow.</p>
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-3 xl:grid-cols-6">
-          {PIPELINE_COLUMNS.map((column) => {
-            const columnContacts = contacts.filter((contact) => contact.stage === column.id);
-            return (
-              <section key={column.id} className="min-h-[260px] rounded-lg border border-line bg-white p-3 shadow-sm">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold text-ink">{column.label}</h2>
-                  <span className="rounded-full bg-mist px-2 py-1 text-xs font-semibold text-slate-500">{columnContacts.length}</span>
-                </div>
-                <div className="space-y-3">
-                  {columnContacts.map(({ lead, proposal }) => {
-                    const product = proposal ? getProduct(proposal.selected_product_id) : null;
-                    const persona = lead.raw_assessment.scoreData?.persona?.title || "Unassigned";
-                    const recommendationSummary = getLeadRecommendationSummary(lead);
-                    return (
-                      <button
-                        key={lead.lead_id}
-                        type="button"
-                        onClick={() => onNavigate(routeForContact(lead, proposal))}
-                        className="block w-full rounded-md border border-line bg-mist p-3 text-left hover:border-forest hover:bg-white"
-                      >
-                        <p className="font-semibold text-ink">{lead.name}</p>
-                        <p className="mt-1 text-xs text-slate-500">{persona}</p>
-                        <div className="mt-3 space-y-1 text-xs text-slate-600">
-                          <p><span className="font-semibold text-ink">Age:</span> {lead.age || "For review"}</p>
-                          <p><span className="font-semibold text-ink">Budget:</span> {getBudgetLabelFromLead(lead)}</p>
-                          <p>
-                            <span className="font-semibold text-ink">Top match:</span>{" "}
-                            {product?.product_name || recommendationSummary.productName}
-                            {recommendationSummary.isFallback ? " (default)" : ""}
-                          </p>
-                          <p>{recommendationSummary.otherCount} other matching product{recommendationSummary.otherCount === 1 ? "" : "s"}</p>
-                        </div>
-                        {proposal?.viewed_at && <p className="mt-2 text-xs text-slate-500">Viewed {formatRelative(proposal.viewed_at)}</p>}
-                        {proposal?.booking_sent_at && <p className="mt-2 text-xs text-slate-500">Booking sent {formatRelative(proposal.booking_sent_at)}</p>}
-                      </button>
-                    );
-                  })}
-                  {columnContacts.length === 0 && <p className="rounded-md border border-dashed border-line p-3 text-xs text-slate-500">No contacts</p>}
-                </div>
-              </section>
-            );
-          })}
-        </div>
+        <>
+          <section className="mb-5 rounded-lg border border-line bg-white p-4 shadow-sm">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-8">
+              {isSuperadmin && (
+                <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                  Agent
+                  <select value={filters.agentName} onChange={(event) => updateFilter("agentName", event.target.value)} className="mt-2 h-10 w-full rounded-md border border-line bg-mist px-3 text-sm font-medium normal-case tracking-normal text-ink outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20">
+                    <option value="">All agents</option>
+                    {agentNames.map((agentName) => <option key={agentName} value={agentName}>{agentName}</option>)}
+                  </select>
+                </label>
+              )}
+              <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                Product
+                <select value={filters.product} onChange={(event) => updateFilter("product", event.target.value)} className="mt-2 h-10 w-full rounded-md border border-line bg-mist px-3 text-sm font-medium normal-case tracking-normal text-ink outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20">
+                  <option value="">All products</option>
+                  {productNames.map((productName) => <option key={productName} value={productName}>{productName}</option>)}
+                </select>
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                From
+                <input type="date" value={filters.dateFrom} onChange={(event) => updateFilter("dateFrom", event.target.value)} className="mt-2 h-10 w-full rounded-md border border-line bg-mist px-3 text-sm font-medium normal-case tracking-normal text-ink outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20" />
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                To
+                <input type="date" value={filters.dateTo} onChange={(event) => updateFilter("dateTo", event.target.value)} className="mt-2 h-10 w-full rounded-md border border-line bg-mist px-3 text-sm font-medium normal-case tracking-normal text-ink outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20" />
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                Budget
+                <select value={filters.budget} onChange={(event) => updateFilter("budget", event.target.value)} className="mt-2 h-10 w-full rounded-md border border-line bg-mist px-3 text-sm font-medium normal-case tracking-normal text-ink outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20">
+                  <option value="">All budgets</option>
+                  <option value="<1500">Below PHP 1,500</option>
+                  <option value="1500-3000">PHP 1,500-3,000</option>
+                  <option value="3000-5000">PHP 3,000-5,000</option>
+                  <option value="5000+">PHP 5,000+</option>
+                  <option value="unsure">Still clarifying</option>
+                </select>
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                Min age
+                <input type="number" min="0" value={filters.minAge} onChange={(event) => updateFilter("minAge", event.target.value)} className="mt-2 h-10 w-full rounded-md border border-line bg-mist px-3 text-sm font-medium normal-case tracking-normal text-ink outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20" />
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                Max age
+                <input type="number" min="0" value={filters.maxAge} onChange={(event) => updateFilter("maxAge", event.target.value)} className="mt-2 h-10 w-full rounded-md border border-line bg-mist px-3 text-sm font-medium normal-case tracking-normal text-ink outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20" />
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                Status
+                <select value={filters.status} onChange={(event) => updateFilter("status", event.target.value)} className="mt-2 h-10 w-full rounded-md border border-line bg-mist px-3 text-sm font-medium normal-case tracking-normal text-ink outline-none focus:border-forest focus:bg-white focus:ring-2 focus:ring-forest/20">
+                  <option value="">All statuses</option>
+                  {PIPELINE_COLUMNS.map((column) => <option key={column.id} value={column.id}>{column.label}</option>)}
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <div className="grid gap-4 lg:grid-cols-3 2xl:grid-cols-6">
+            {PIPELINE_COLUMNS.map((column) => {
+              const columnContacts = filteredContacts.filter((contact) => contact.stage === column.id);
+              return (
+                <section key={column.id} className="min-h-[260px] rounded-lg border border-line bg-white p-3 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <h2 className="text-sm font-semibold text-ink">{column.label}</h2>
+                    <span className="rounded-full bg-mist px-2 py-1 text-xs font-semibold text-slate-500">{columnContacts.length}</span>
+                  </div>
+                  <div className="space-y-3">
+                    {columnContacts.map(({ lead, proposal, recommendationSummary }) => {
+                      const product = proposal ? getProduct(proposal.selected_product_id) : null;
+                      const persona = lead.raw_assessment.scoreData?.persona?.title || "Unassigned";
+                      return (
+                        <button
+                          key={lead.lead_id}
+                          type="button"
+                          onClick={() => onNavigate(routeForContact(lead, proposal))}
+                          className="block w-full rounded-md border border-line bg-mist p-3 text-left hover:border-forest hover:bg-white"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-semibold text-ink">{lead.name}</p>
+                            <span className="shrink-0 text-xs font-medium text-slate-500">{formatDateOnly(lead.created_at)}</span>
+                          </div>
+                          {isSuperadmin && (
+                            <span className="mt-2 inline-flex rounded-full border border-forest/20 bg-forest/5 px-2 py-1 text-xs font-semibold text-forest">
+                              {getLeadAgentName(lead)}
+                            </span>
+                          )}
+                          <p className="mt-2 text-xs text-slate-500">{persona}</p>
+                          <div className="mt-3 space-y-1 text-xs text-slate-600">
+                            <p><span className="font-semibold text-ink">Status:</span> {PIPELINE_STATUS_LABELS[column.id]}</p>
+                            <p><span className="font-semibold text-ink">Age:</span> {lead.age || "For review"}</p>
+                            <p><span className="font-semibold text-ink">Budget:</span> {getBudgetLabelFromLead(lead)}</p>
+                            <p>
+                              <span className="font-semibold text-ink">Top match:</span>{" "}
+                              {product?.product_name || recommendationSummary.productName}
+                              {recommendationSummary.isFallback ? " (default)" : ""}
+                            </p>
+                            <p>{recommendationSummary.otherCount} other matching product{recommendationSummary.otherCount === 1 ? "" : "s"}</p>
+                          </div>
+                          {proposal?.viewed_at && <p className="mt-2 text-xs text-slate-500">Viewed {formatRelative(proposal.viewed_at)}</p>}
+                          {proposal?.booking_sent_at && <p className="mt-2 text-xs text-slate-500">Booking sent {formatRelative(proposal.booking_sent_at)}</p>}
+                        </button>
+                      );
+                    })}
+                    {columnContacts.length === 0 && <p className="rounded-md border border-dashed border-line p-3 text-xs text-slate-500">No contacts</p>}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </>
       )}
     </section>
   );
@@ -865,7 +1272,11 @@ function IntakeScreen({ currentUser, onNavigate, onDataChanged }) {
 
     try {
       const agentId = currentUser.role === "agent" ? currentUser.agent_id : null;
-      const lead = await saveLeadRemote(createLeadFromRawAssessment(parsed, agentId));
+      const draftLead = createLeadFromRawAssessment(parsed, agentId);
+      const lead = await saveLeadRemote({
+        ...draftLead,
+        agent_name: currentUser.role === "agent" ? currentUser.name : draftLead.agent_name
+      });
       onDataChanged();
       onNavigate(makeRoute("options", { leadId: lead.lead_id }));
     } catch (saveError) {
@@ -1040,8 +1451,9 @@ function ProductDetailScreen({ productId, onNavigate }) {
 
 function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }) {
   const lead = getLead(leadId);
-  const [selectedProductId, setSelectedProductId] = useState("");
-  const [selectedRiders, setSelectedRiders] = useState([]);
+  const existingProposal = lead ? latestProposalForLead(getProposals(), lead.lead_id) : null;
+  const [selectedProductId, setSelectedProductId] = useState(() => existingProposal?.selected_product_id || "");
+  const [selectedRiders, setSelectedRiders] = useState(() => existingProposal?.selected_riders || []);
   const [submitting, setSubmitting] = useState(false);
 
   if (!lead || !canAccessLead(currentUser, lead)) {
@@ -1067,17 +1479,17 @@ function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }
     const selectedProduct = getProduct(selectedRecommendation.product_id);
     if (!selectedProduct) return;
     setSubmitting(true);
-    const proposal = await saveProposalRemote({
-      proposal_id: crypto.randomUUID(),
+    const nextProposal = {
+      proposal_id: existingProposal?.proposal_id || crypto.randomUUID(),
       lead_id: lead.lead_id,
-      agent_id: lead.agent_id || currentUser.agent_id,
+      agent_id: lead.agent_id || currentUser.agent_id || null,
       selected_product_id: selectedRecommendation.product_id,
       selected_riders: selectedRiders,
       coverage_snapshot: getCoverageSnapshot(selectedProduct, selectedRiders),
       match_reasoning_snapshot: getProposalReasoning(selectedRecommendation, threats),
       match_percentage_snapshot: getMatchPercentage(selectedRecommendation),
       status: "draft",
-      created_at: new Date().toISOString(),
+      created_at: existingProposal?.created_at || new Date().toISOString(),
       sent_at: null,
       viewed_at: null,
       accepted_at: null,
@@ -1086,8 +1498,13 @@ function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }
         confirmed_at: null,
         ip_or_session_ref: null
       },
-      public_share_token: createPublicShareToken()
-    });
+      public_share_token: existingProposal?.public_share_token || createPublicShareToken(),
+      booking: null,
+      booking_sent_at: null
+    };
+    const proposal = existingProposal
+      ? await updateProposalRemote(existingProposal.proposal_id, () => nextProposal)
+      : await saveProposalRemote(nextProposal);
     onDataChanged();
     onNavigate(makeRoute("proposal-preview", { proposalId: proposal.proposal_id }));
     setSubmitting(false);
@@ -1116,7 +1533,7 @@ function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }
         </aside>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_330px]">
+      <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-4">
           {hasOnlyFallback && (
             <div className="rounded-lg border border-gold/60 bg-white p-6 shadow-sm">
@@ -1270,7 +1687,7 @@ function ProductOptionsScreen({ currentUser, leadId, onNavigate, onDataChanged }
               className="inline-flex h-11 items-center gap-2 rounded-md bg-forest px-4 text-sm font-semibold text-white hover:bg-forest/90 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               <FileText size={17} />
-              {submitting ? "Generating" : "Generate Client Proposal"}
+              {submitting ? "Saving" : existingProposal ? "Update Client Proposal" : "Generate Client Proposal"}
             </button>
           </div>
         </div>
@@ -1708,6 +2125,14 @@ function BookingScreen({ currentUser, proposalId, onNavigate, onDataChanged }) {
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             <button
               type="button"
+              onClick={() => onNavigate(makeRoute("options", { leadId: lead.lead_id }))}
+              className="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-white px-4 text-sm font-semibold text-ink hover:border-forest"
+            >
+              <ReceiptText size={16} />
+              Review or Change Option
+            </button>
+            <button
+              type="button"
               disabled={!startDateTime}
               onClick={() => saveBooking(false)}
               className="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-white px-4 text-sm font-semibold text-ink hover:border-forest disabled:cursor-not-allowed disabled:text-slate-400"
@@ -1781,6 +2206,14 @@ function CompleteScreen({ currentUser, leadId, onNavigate, onDataChanged }) {
           <p><span className="font-semibold text-ink">New business:</span> {lead.new_business_at ? formatDate(lead.new_business_at) : "Not moved yet"}</p>
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onNavigate(makeRoute("options", { leadId: lead.lead_id }))}
+            className="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-white px-4 text-sm font-semibold text-ink hover:border-forest"
+          >
+            <ReceiptText size={16} />
+            Review or Change Option
+          </button>
           <button
             type="button"
             onClick={markNewBusiness}
@@ -1908,6 +2341,8 @@ export default function App() {
     content = <IntakeScreen currentUser={currentUser} onNavigate={handleNavigate} onDataChanged={handleDataChanged} />;
   } else if (route.name === "agents") {
     content = <AgentManagementScreen currentUser={currentUser} onNavigate={handleNavigate} />;
+  } else if (route.name === "agent-detail") {
+    content = <AgentDetailScreen currentUser={currentUser} userId={route.userId} onNavigate={handleNavigate} refreshKey={refreshKey} onDataChanged={handleDataChanged} />;
   } else if (route.name === "product-catalog") {
     content = <ProductCatalogScreen onNavigate={handleNavigate} />;
   } else if (route.name === "product-detail") {
