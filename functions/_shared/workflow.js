@@ -20,7 +20,7 @@ function cleanString(value) {
 function normalizeLead(lead) {
   const rawAssessment = lead.raw_assessment || parseJson(lead.raw_assessment_json, {});
   const agentId = cleanString(lead.agent_id || lead.agent_slug || rawAssessment?.agent?.agentSlug || rawAssessment?.agentInfo?.agentSlug);
-  const agentName = cleanString(lead.agent_name || rawAssessment?.agent?.agentName || rawAssessment?.agentInfo?.agentName);
+  const agentName = cleanString(lead.agent_name || lead.resolved_agent_name || rawAssessment?.agent?.agentName || rawAssessment?.agentInfo?.agentName);
 
   return {
     lead_id: lead.lead_id || lead.id,
@@ -84,7 +84,16 @@ export async function requireDb(env) {
 export async function listLeads(request, db) {
   const user = await requireUser(request, db);
   const result = await db
-    .prepare("SELECT * FROM leads ORDER BY created_at DESC")
+    .prepare(
+      `SELECT
+        leads.*,
+        COALESCE(NULLIF(leads.agent_name, ''), agents.name, agents.agent_name) AS resolved_agent_name
+       FROM leads
+       LEFT JOIN agents
+        ON agents.agent_slug = leads.agent_slug
+        OR agents.agent_id = leads.agent_slug
+       ORDER BY leads.created_at DESC`
+    )
     .all();
   return (result.results || [])
     .map(normalizeLead)
@@ -93,7 +102,17 @@ export async function listLeads(request, db) {
 
 export async function getLeadById(db, leadId) {
   const row = await db
-    .prepare("SELECT * FROM leads WHERE id = ? LIMIT 1")
+    .prepare(
+      `SELECT
+        leads.*,
+        COALESCE(NULLIF(leads.agent_name, ''), agents.name, agents.agent_name) AS resolved_agent_name
+       FROM leads
+       LEFT JOIN agents
+        ON agents.agent_slug = leads.agent_slug
+        OR agents.agent_id = leads.agent_slug
+       WHERE leads.id = ?
+       LIMIT 1`
+    )
     .bind(leadId)
     .first();
   return row ? normalizeLead(row) : null;

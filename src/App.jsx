@@ -34,6 +34,7 @@ import {
   deleteAgentRemote,
   fetchAgentsRemote,
   fetchAuthSession,
+  getAgents,
   readAuthSession,
   saveAgentRemote
 } from "./lib/auth.js";
@@ -301,8 +302,10 @@ function getLeadRecommendationSummary(lead) {
   }
 }
 
-function getLeadAgentName(lead) {
-  return lead.agent_name || lead.raw_assessment?.agent?.agentName || lead.raw_assessment?.agentInfo?.agentName || "Unassigned agent";
+function getLeadAgentName(lead, agents = []) {
+  const agentSlug = lead.agent_slug || lead.agent_id || lead.raw_assessment?.agent?.agentSlug || lead.raw_assessment?.agentInfo?.agentSlug;
+  const matchedAgent = agents.find((agent) => agent.agent_slug === agentSlug || agent.agent_id === agentSlug);
+  return lead.agent_name || matchedAgent?.name || matchedAgent?.agent_name || lead.raw_assessment?.agent?.agentName || lead.raw_assessment?.agentInfo?.agentName || "Unassigned agent";
 }
 
 function getLeadCreatedDateValue(lead) {
@@ -318,11 +321,11 @@ function filterContacts(contacts, filters, includeAgentFilter = false) {
   const minAge = filters.minAge === "" ? null : Number(filters.minAge);
   const maxAge = filters.maxAge === "" ? null : Number(filters.maxAge);
 
-  return contacts.filter(({ lead, stage, recommendationSummary }) => {
+  return contacts.filter(({ lead, stage, recommendationSummary, agentName }) => {
     const createdAt = getLeadCreatedDateValue(lead);
     const age = Number(lead.age);
 
-    if (includeAgentFilter && filters.agentName && getLeadAgentName(lead) !== filters.agentName) return false;
+    if (includeAgentFilter && filters.agentName && agentName !== filters.agentName) return false;
     if (filters.product && recommendationSummary.productName !== filters.product) return false;
     if (filters.budget && getBudgetIdFromLead(lead) !== filters.budget) return false;
     if (filters.status && stage !== filters.status) return false;
@@ -906,7 +909,7 @@ function AgentDetailScreen({ currentUser, userId, onNavigate, refreshKey, onData
   const isSeeded = agent ? seededAgentIds.has(agent.user_id) : false;
   const agentLeads = agent
     ? leads
-      .filter((lead) => lead.agent_id === agent.agent_id || lead.agent_slug === agent.agent_slug || getLeadAgentName(lead) === agent.name)
+      .filter((lead) => lead.agent_id === agent.agent_id || lead.agent_slug === agent.agent_slug || getLeadAgentName(lead, agents) === agent.name)
       .map((lead) => {
         const proposal = latestProposalForLead(proposals, lead.lead_id);
         return {
@@ -1094,20 +1097,23 @@ function Dashboard({ currentUser, onNavigate, refreshKey }) {
   });
   const leads = useMemo(() => getLeads().filter((lead) => canAccessLead(currentUser, lead)), [currentUser, refreshKey]);
   const proposals = useMemo(() => getProposals(), [refreshKey]);
+  const agentDirectory = useMemo(() => getAgents(), [refreshKey]);
   const isSuperadmin = currentUser.role === "superadmin";
 
   const contacts = leads.map((lead) => {
     const proposal = latestProposalForLead(proposals, lead.lead_id);
     const recommendationSummary = getLeadRecommendationSummary(lead);
+    const agentName = getLeadAgentName(lead, agentDirectory);
     return {
       lead,
       proposal,
       stage: getPipelineStage(lead, proposal),
-      recommendationSummary
+      recommendationSummary,
+      agentName
     };
   });
   const filteredContacts = filterContacts(contacts, filters, isSuperadmin);
-  const agentNames = [...new Set(contacts.map((contact) => getLeadAgentName(contact.lead)).filter(Boolean))].sort();
+  const agentNames = [...new Set(contacts.map((contact) => contact.agentName).filter(Boolean))].sort();
   const productNames = [...new Set(contacts.map((contact) => contact.recommendationSummary.productName).filter(Boolean))].sort();
 
   function updateFilter(field, value) {
@@ -1196,7 +1202,7 @@ function Dashboard({ currentUser, onNavigate, refreshKey }) {
                     <span className="rounded-full bg-mist px-2 py-1 text-xs font-semibold text-slate-500">{columnContacts.length}</span>
                   </div>
                   <div className="space-y-3">
-                    {columnContacts.map(({ lead, proposal, recommendationSummary }) => {
+                    {columnContacts.map(({ lead, proposal, recommendationSummary, agentName }) => {
                       const product = proposal ? getProduct(proposal.selected_product_id) : null;
                       const persona = lead.raw_assessment.scoreData?.persona?.title || "Unassigned";
                       return (
@@ -1212,7 +1218,7 @@ function Dashboard({ currentUser, onNavigate, refreshKey }) {
                           </div>
                           {isSuperadmin && (
                             <span className="mt-2 inline-flex rounded-full border border-forest/20 bg-forest/5 px-2 py-1 text-xs font-semibold text-forest">
-                              {getLeadAgentName(lead)}
+                              {agentName}
                             </span>
                           )}
                           <p className="mt-2 text-xs text-slate-500">{persona}</p>
